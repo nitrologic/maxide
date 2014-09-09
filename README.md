@@ -1,0 +1,4 @@
+maxide
+======
+
+BlitzMax development environment
