@@ -1,12 +1,26 @@
+' maxide.bmx 
 
-' maxide.bmx - blitzmax native integrated development environment
+' BlitzMax native integrated development environment
 
-' by simonarmstrong@blitzbasic.com
+' Copyright (c) 2005-2014 Simon Armstrong, Blitz Research Limited
 
-' released under the Blitz Shared Source Code License 2005
-' released into the public domain 2006
-
-' requires MaxGui modules to run
+' Permission is hereby granted, free of charge, to any person obtaining a copy
+' of this software and associated documentation files (the "Software"), to deal
+' in the Software without restriction, including without limitation the rights
+' to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+' copies of the Software, and to permit persons to whom the Software is
+' furnished to do so, subject to the following conditions:
+' 
+' The above copyright notice and this permission notice shall be included in
+' all copies or substantial portions of the Software.
+' 
+' THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+' IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+' FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+' AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+' LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+' OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+' THE SOFTWARE.
 
 Strict
 
@@ -42,10 +56,10 @@ Const DEFAULT_LANGUAGEPATH$ = "incbin::default.language.ini"
 Incbin "window_icon.png"
 ?
 
-AppTitle = "MaxIDE"
-
-Const IDE_VERSION$="1.43"
+Const IDE_VERSION$="1.44 beta"
 Const TIMER_FREQUENCY=15
+
+AppTitle = "MaxIDE "+IDE_VERSION
 
 ?Win32
 Extern
@@ -72,7 +86,7 @@ Const ABOUTDEMO$=..
 "This demo features both the core BlitzMax package and optional MaxGUI module.~n~n"+..
 "Please note that the MaxGUI module must be purchased separately."
 
-Const FileTypes$="bmx,bbdoc,txt,ini,doc,plist,bb,cpp,c,cc,m,cxx,s,glsl,hlsl,lua,py,h,hpp,html,htm,css,js,bat,mm,as,java,bbx,cx"
+Const FileTypes$="bmx,bbdoc,txt,ini,doc,plist,bb,cpp,c,cc,m,cxx,s,glsl,hlsl,lua,py,h,hpp,html,htm,css,js,bat,sh,mm,as,java,bbx,cx"
 Const FileTypeFilters$="Code Files:"+FileTypes$+";All Files:*"
 
 Const HOMEPAGE$="/docs/html/index.html"
