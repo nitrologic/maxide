@@ -18,6 +18,9 @@ Import brl.retro
 
 Import pub.stdc
 
+' added .md markdown suffix
+' 
+
 ?Win32
 Import "monk.o"
 ?
@@ -40,7 +43,7 @@ Global BCC_VERSION$="{unknown}"	'not valid until codeplay opened
 
 Const EOL$="~n"
 
-Const FileTypes$="monkey,bmx,bbdoc,txt,ini,doc,plist,bb,cpp,c,cc,m,cxx,s,glsl,hlsl,lua,py,h,hpp,html,htm,css,js,bat,mm,as,java,bbx,cs,xml,properties,template"
+Const FileTypes$="monkey,bmx,bbdoc,txt,ini,md,doc,plist,bb,cpp,c,cc,m,cxx,s,glsl,hlsl,lua,py,h,hpp,html,htm,css,js,bat,mm,as,java,bbx,cs,xml,properties,template"
 Const FileTypeFilters$="Code Files:"+FileTypes$+";All Files:*"
 
 Const WIKI_URL$="http://blitz-wiki.appspot.com/"
