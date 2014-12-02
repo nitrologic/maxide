@@ -18,8 +18,8 @@ Import brl.retro
 
 Import pub.stdc
 
-' added .md markdown suffix
-' 
+' added .md markdown and .sh script to filter
+' modified monkpath to use appdir contents folder 
 
 ?Win32
 Import "monk.o"
@@ -43,7 +43,7 @@ Global BCC_VERSION$="{unknown}"	'not valid until codeplay opened
 
 Const EOL$="~n"
 
-Const FileTypes$="monkey,bmx,bbdoc,txt,ini,md,doc,plist,bb,cpp,c,cc,m,cxx,s,glsl,hlsl,lua,py,h,hpp,html,htm,css,js,bat,mm,as,java,bbx,cs,xml,properties,template"
+Const FileTypes$="monkey,bmx,bbdoc,txt,ini,md,doc,plist,bb,cpp,c,cc,m,cxx,s,glsl,hlsl,lua,py,h,hpp,html,htm,css,js,bat,sh,mm,as,java,bbx,cs,xml,properties,template"
 Const FileTypeFilters$="Code Files:"+FileTypes$+";All Files:*"
 
 Const WIKI_URL$="http://blitz-wiki.appspot.com/"
@@ -6216,6 +6216,7 @@ Type TCodePlay
 ' read ini
 		stream=ReadFile(inipath)
 		If Not stream
+			Notify "ini file failed to read:"+inipath
 			AddDefaultProj "monkey|."
 			Return
 		EndIf
@@ -6276,12 +6277,15 @@ Type TCodePlay
 	End Method
 	
 	Method WriteConfig()
-		Local	panel:TToolPanel
-		Local	node:TNode
-		Local	f$
+		Local panel:TToolPanel
+		Local node:TNode
+		Local f$
 		
-		Local	stream:TStream = WriteFile(inipath)
-		If Not stream Return
+		Local stream:TStream = WriteFile(inipath)
+		If Not stream 
+			Notify "Failed to write inipath:"+inipath
+			Return
+		EndIf
 ' options
 		options.Write(stream)
 ' defaults		
@@ -6792,14 +6796,10 @@ Type TCodePlay
 		Local	stream:TStream
 
 		monkpath=AppDir
-		CreateDir monkpath+"/tmp"
-		If FileType( monkpath+"/tmp" )<>FILETYPE_DIR
-			Notify "Unable to create Monk 'tmp' directory."
-			End
-		EndIf
-				
+?macos
+		monkpath=RealPath(AppFile+"/../..")
+?								
 		inipath=monkpath+"/monk."+ComputerName$()+".ini"
-				
 		window=CreateWindow("Monk",20,20,760,540,Null,WINDOW_TITLEBAR|WINDOW_RESIZABLE|WINDOW_STATUS|WINDOW_HIDDEN|WINDOW_ACCEPTFILES|WINDOW_MENU)
 		
 		?Linux
