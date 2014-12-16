@@ -1,4 +1,16 @@
-' monk.bmx 
+' changelog
+
+' monk.bmx 0.40.01
+' 
+
+
+' monk.bmx 0.40.00
+' added .md markdown and .sh script to file filter
+' modified monkpath to use appdir contents folder 
+' fixed apostrophe issues in yosemite (maxgui)
+' fixed toolbar issue in yosemite (maxgui)
+
+
 
 Strict
 
@@ -18,17 +30,411 @@ Import brl.retro
 
 Import pub.stdc
 
-' added .md markdown and .sh script to filter
-' modified monkpath to use appdir contents folder 
-
 ?Win32
 Import "monk.o"
 ?
 
 AppTitle = "Monk"
-
-Const VERSION$="0.40.00"
+Const VERSION$="0.40.01"
 Const ABOUT$="Monk "+VERSION+" - (c) 2014 Simon Armstrong"
+
+' server
+
+Global socket:TSocket
+Global ServerRoot$
+
+Function CloseServer()
+	TConnection.CloseAll
+	CloseSocket socket
+	socket=Null
+End Function
+
+Function RunServer(rootpath$,port)
+	If socket CloseServer
+	socket=CreateTCPSocket()
+	BindSocket socket,port
+	SocketListen socket,5
+	DebugLog "hostip = "+ DottedIP (HostIp( "localhost" ))
+	ServerRoot=rootpath
+	DebugLog "nitrohost listening on port "+port+" serving "+ServerRoot
+	Delay 10
+End Function
+
+Function PollServer()
+	Local client:TSocket=SocketAccept(socket,20)
+	If client 
+		New TConnection.Create(ServerRoot+"/",client)	'+"www/",client)
+	EndIf
+	TConnection.PollAll
+End Function
+
+
+Type TByteBuffa Extends TStream
+	Field	bytes:Byte[]
+	Field	readpointer
+
+	Method Read( buf:Byte Ptr,count )
+		If count>readpointer count=readpointer
+		If count=0 Return
+		MemCopy buf,bytes,count
+		readpointer:-count
+		If readpointer MemMove bytes,Varptr bytes[count],readpointer
+		Return count 
+	End Method
+
+	Method Write( buf:Byte Ptr,count )
+		Local	n,m
+		n=readpointer+count
+		If n>bytes.length
+			m=Max(bytes.length*1.5,n)
+			bytes=bytes[..m]
+		EndIf
+		MemCopy Varptr bytes[readpointer],buf,count
+		readpointer=n
+		Return count
+	End Method	
+	
+	Method LineAvail()
+		Local	i
+		For i=0 Until readpointer
+			If bytes[i]=10 Return True
+		Next
+	End Method
+
+	Method FlushBytes:Byte[]()
+		Local res:Byte[]=bytes[..readpointer]
+		readpointer=0
+		Return res
+	End Method
+End Type
+
+
+Type TConnection
+
+	Global connections:TList=New TList
+	
+	Field _serverpath$
+
+	Field id
+	Field _socket:TSocket
+	Field _stream:TStream
+	Field _data$
+
+	Field _getname$
+	Field _postname$
+
+	Field _header:TMap	
+	Field _content:Byte[]
+	Field _contentsize
+	Field _contentpos
+	Field _contentboundary$
+	
+	Function CloseAll()
+		Local connect:TConnection
+		For connect=EachIn connections
+			connect.Close
+		Next
+	End Function
+	
+	Method Close()
+		CloseSocket _socket
+		_socket=Null
+	End Method
+			
+	Function PollAll()
+		Local connect:TConnection
+		For connect=EachIn connections
+			connect.Poll
+		Next
+	End Function		
+
+	Method Create:TConnection(path$,client:TSocket)
+		DebugLog "creating connection!"
+		­_serverpath=path
+		_socket=client
+		_stream=CreateSocketStream(client)
+		connections.AddLast Self
+		id=connections.count()
+		Return Self
+	End Method
+
+' process control
+Rem
+	Field _process:TProcess
+	Field _replybuffer:TByteBuffa
+	Field _reply$
+
+	Method RunProcess(proc$)
+		Local cmd$		
+'		If _contentboundary
+'			Local l=Len _contentboundary+4
+'			_content=_content[l..(Len _content)-l-3]
+'		EndIf
+		Local f:TStream=WriteFile("content.txt")
+		f.write _content,_content.length
+		CloseFile f
+	
+		putenv_ "CONTENT_LENGTH="+_content.length
+		
+		cmd="cgi-bin"+proc.Trim()+".exe"	' +_content.length
+		_process=CreateProcess(cmd$,HIDECONSOLE)
+		If Not _process DebugLog "Process Failure with "+cmd;Return
+		If Not _process.status() DebugLog "Process Failed to start "+cmd;Return		
+'		WritePipe content$
+		_replybuffer=New TByteBuffa
+		_reply$=""
+		
+		PollProcess
+	End Method
+	
+	Method PollProcess()
+		Local pipe:TPipeStream
+		Local status
+		Local count
+		Local bytes:Byte[],line$
+
+		If Not _process Return		
+		pipe=_process.pipe
+' write to process
+		count=_contentsize-_contentpos
+		If count
+			DebugLog "pipe.write count="+count
+			count=pipe.write(Byte Ptr(_content)+_contentpos,count)
+			DebugLog "pipe.write count="+count
+			_contentpos:+count
+			If _contentpos=_contentsize 
+				_content=Null
+				pipe.write("~r~n",2)
+				pipe.flush()
+				DebugLog "flushed pipe _content=null!"
+			EndIf
+		EndIf
+' read status BEFORE pipe
+		status=_process.status()
+' read from process
+		bytes=pipe.ReadPipe()
+		If Len bytes
+			_reply:+String.FromBytes(bytes,Len bytes)
+		EndIf
+'Rem		
+		
+		If bytes _replybuffer.WriteBytes bytes,Len bytes		
+		DebugLog "reply bytes="+Len bytes
+		While _replybuffer.LineAvail()
+			line$=_replybuffer.ReadLine()
+			DebugLog "reply line:"+line
+			_reply:+line
+		Wend
+'EndRem
+' refresh status
+		If status=0
+			DebugLog "process complete"
+			_process.terminate
+			_process.close
+			_process=Null
+			_content=Null
+			If _reply
+				WritePage _reply,Len _reply
+			EndIf
+		EndIf
+
+	End Method
+EndRem
+	
+' virtual server activation from polled http connection
+
+	Method ConfirmPost(postname$,_header:TMap)
+		Local v$,t$,b$,p
+		v$=String(_header.ValueForKey("Content-Length"))
+		DebugLog "contentsize:"+v
+		t$=String(_header.ValueForKey("Content-Type"))
+		p=t.find("boundary=")
+		If p<>-1 _contentboundary=t[p+9..]
+		DebugLog "contenttype:"+t+" _contentboundary="+_contentboundary
+'contenttype: multipart/form-data; boundary=---------------------------7d61b5111055c
+		_contentsize=Int(v.Trim())
+		Return True
+	End Method
+
+	Method PostContent(uri$)
+		Local a$
+		DebugLog "Post:"+uri
+		For a$=EachIn _header.keys()
+'			DebugLog "+"+a+"="+String(_header.ValueForKey(a))
+		Next
+'		DebugLog "Content:"+content
+' simon come here		RunProcess uri
+		_contentpos=0
+	End Method
+
+	Method WritePage(html$,size)
+		WriteLine _stream,"HTTP/1.1 200 OK"
+		WriteLine _stream,"Content-Type: text/html; charset=UTF-8"
+		WriteLine _stream,"Content-Length: "+size
+		WriteLine _stream,"Pragma: no-cache"
+		WriteLine _stream,"Expires: Fri, 01 Jan 1990 00:00:00 GMT"
+		WriteLine _stream,"Cache-control: no-cache, no-store, must-revalidate"
+		WriteLine _stream,"Connection: keep-alive"
+		WriteLine _stream,"Keep-Alive: 30000"
+		WriteLine _stream,""
+		WriteLine _stream,html
+	End Method	
+	
+	Method WriteStyle(css$,size)
+		WriteLine _stream,"HTTP/1.1 200 OK"
+		WriteLine _stream,"Content-Type: text/css; charset=UTF-8"
+		WriteLine _stream,"Content-Length: "+size
+		WriteLine _stream,"Pragma: no-cache"
+		WriteLine _stream,"Expires: Fri, 01 Jan 1990 00:00:00 GMT"
+		WriteLine _stream,"Cache-control: no-cache, no-store, must-revalidate"
+		WriteLine _stream,"Connection: keep-alive"
+		WriteLine _stream,"Keep-Alive: 30000"
+		WriteLine _stream,""
+		WriteLine _stream,css
+	End Method	
+
+	Method ServePage(uri$)
+		Local file$,size,p
+		
+		If uri$="/" 
+			file="index.html"
+		Else
+			file=uri
+			If file[..1]="/" file=file[1..]
+			p=file.find("?")
+			If p>0 file=file[..p]
+'			file=uri[..p]
+'			uri=args[p..]
+		EndIf
+		
+'		file="www/"+file
+'		file="netgui/"+file
+		file=_serverpath+file
+
+
+		If file And FileType(file)=FILETYPE_FILE
+			size=FileSize(file)
+			If size=0
+				DebugLog "ServePage "+uri+" is empty"
+				Return
+			EndIf	
+			
+			Select ExtractExt(file).tolower()
+			Case "css"
+				DebugLog "serving "+uri+" css from connection#"+id
+				WriteStyle LoadText(file),size
+			Default
+				DebugLog "serving "+uri+" txt from connection#"+id
+				WritePage LoadText(file),size
+			End Select
+			
+			
+			DebugLog file+" served?"
+		Else
+			DebugLog "Failed To find file "+file
+		EndIf		
+'		debuglog "Served!"
+	End Method
+
+' local state machine http state machine
+
+	Method getline$()
+		Local p,l$
+		p=_data.find("~n")
+		If p=-1 p=_data.length
+		l=_data[..p]
+		_data=_data[p+1..]		
+		Return l
+	End Method
+
+	Method addheader(mess$)
+		Local p=mess.find(":")
+		If p<>-1
+			_header.insert mess[..p],mess[p+1..]
+		Else
+			DebugLog "Unknown header line :"+mess
+		EndIf
+	End Method
+		
+	Method Poll()
+		Local bytes,mess$
+
+'		If _process
+'			PollProcess
+'			Return
+'		EndIf
+
+		If _content
+			bytes=SocketReadAvail(_socket)
+			If bytes And _contentpos<_contentsize
+				bytes=_stream.Read(Byte Ptr(_content)+_contentpos,bytes)
+				_contentpos:+bytes
+				DebugLog "_contentpos="+_contentpos
+			EndIf
+			If _contentpos=_contentsize
+				PostContent _postname
+				_postname=""
+			EndIf
+			Return
+		EndIf
+
+		bytes=SocketReadAvail(_socket)
+		If bytes
+			_data:+ReadString(_stream,bytes)
+'			DebugLog "_data:"+_data
+		EndIf
+			
+		While _data
+			mess=Trim(getline())
+			If _getname
+				If mess=""
+					ServePage _getname
+					_getname=""
+				Else
+					addheader mess
+					Continue
+				EndIf
+			EndIf
+			If _postname
+				If mess=""
+					If ConfirmPost(_postname,_header)
+						If _contentsize _content=New Byte[_contentsize]
+						_contentpos=Min(_contentsize,Len _data)
+						If _contentpos
+							Local src:Byte Ptr=_data.toCString()
+							Local dest:Byte Ptr=Byte Ptr(_content)
+							MemCopy dest,src,_contentpos
+							MemFree src
+						EndIf
+					EndIf
+					_data=_data[_contentsize..]
+				Else
+					addheader mess
+				EndIf
+				Continue
+			EndIf
+			If mess[..4]="GET "
+				_getname=mess[4..]
+				_getname=_getname.Replace(" HTTP/1.1","")
+				_header=New TMap
+			EndIf			
+			If mess[..4]="POST"
+				_postname=mess[4..]
+				_postname=_postname.Replace(" HTTP/1.1","")
+				_header=New TMap
+				_contentsize=0
+				_content=Null
+				DebugLog "post="+_postname
+			EndIf			
+		Wend	
+	End Method
+
+End Type
+
+
+
+
+' client
 
 Incbin "monkicon.png"
 Incbin "monktoolbar.png"
@@ -45,16 +451,6 @@ Const EOL$="~n"
 
 Const FileTypes$="monkey,bmx,bbdoc,txt,ini,md,doc,plist,bb,cpp,c,cc,m,cxx,s,glsl,hlsl,lua,py,h,hpp,html,htm,css,js,bat,sh,mm,as,java,bbx,cs,xml,properties,template"
 Const FileTypeFilters$="Code Files:"+FileTypes$+";All Files:*"
-
-Const WIKI_URL$="http://blitz-wiki.appspot.com/"
-Const WIKI_LOCAL$="/docs/blitz-wiki.appspot.com/"
-Const WIKI_LOCAL_SUFFIX$="4d8a.html"
-
-Const WIKI_ARGS$="?format=mobile"
-Const WIKI_HOST$="blitz-wiki.appspot.com"
-Const WIKI_INDEX$="w/index"
-Const WIKI_RSS_INDEX$="w/index.rss"
-Const WIKI_SITE_INDEX$="sitemap.xml"
 
 Const CLOUDHOST$="commondatastorage.googleapis.com"
 Const CLOUD$="http://"+CLOUDHOST+"/monkeycoder.co.nz/"
@@ -170,7 +566,8 @@ Const MENUBACKSPACE=64
 
 Const MENUREMOVE=65
 
-Const MENURECENT=256
+Const MENUTARGET=256
+Const MENURECENT=512
 
 Const TB_BACK=0
 Const TB_FORWARDS=1
@@ -267,6 +664,25 @@ Type TQuickHelp
 		Local t:TToken = TToken(map.ValueForKey(cmd.toLower()))
 		If t Return t.anchor
 	End Method
+	
+	Method ParseHtml(monkeypath$,dir$,file$)
+		Local url$=monkeypath+dir+file
+		Local html$=LoadText(url)	
+		Local refs$[]=html.Split("<a href='")
+		For Local i=1 Until refs.length
+			Local r$=refs[i]
+			Local p=r.Find("'>")
+			Local q=r.Find("</a>")
+			If p<0 Or q<0 Continue			
+			Local help$=""
+			Local link$="monkey:"+dir+r[..p]
+			Local token$=r[p+2..q]
+			DebugLog "token="+token+" link="+link
+			AddCommand token,help,link
+		Next	
+'		AddCommand token,help,anchor
+'		AddCommand "Shit","",""
+	End Method
 
 	Function LoadMonkeyCommands:TQuickHelp(monkeypath$,host:TCodePlay)
 		Local	qh:TQuickHelp
@@ -296,15 +712,18 @@ Type TQuickHelp
 			qh.AddCommand token,help,anchor
 		Next
 		
-		For Local l$ = EachIn MonkeyFunctions.Split(";")
-			token=l
-			help="press F1 again to jump see docs on "+l	'TODO: quickhelp array please
-			anchor$="wiki:"+l
-			qh.AddCommand token,help,anchor,False
-		Next
+'		For Local l$ = EachIn MonkeyFunctions.Split(";")
+'			token=l
+'			help="press F1 again to jump see docs on "+l	'TODO: quickhelp array please
+'			anchor$="wiki:"+l
+'			qh.AddCommand token,help,anchor,False
+'		Next
 
-'		qh.ParseHelp monkeypath,"/docs/Modules"
-		
+		qh.ParseHtml monkeypath,"/docs/html/","Modules.html"
+		qh.ParseHtml monkeypath,"/docs/html/","Classes.html"
+		qh.ParseHtml monkeypath,"/docs/html/","Interfaces.html"
+		qh.ParseHtml monkeypath,"/docs/html/","Functions.html"
+
 		Return qh
 	End Function
 	
@@ -1457,7 +1876,6 @@ Type TNewRequester Extends TRequester
 	End Function
 End Type
 
-
 Type TMonkeyRequester Extends TRequester
 	Field target:TGadget
 	Field fullpath$
@@ -1551,12 +1969,13 @@ Type TMonkeyRequester Extends TRequester
 	Function Create:TMonkeyRequester(host:TCodePlay)
 		Local	seek:TMonkeyRequester
 		seek=New TMonkeyRequester
-		seek.initrequester(host,"Monkey Build",280,66,STYLE_OK|STYLE_CANCEL|STYLE_DIVIDER|STYLE_MODAL,"Build")
+		seek.initrequester(host,"Monkey Build",320,66,STYLE_OK|STYLE_CANCEL|STYLE_DIVIDER|STYLE_MODAL,"Build")
 		CreateLabel("Target:",4,14,82,28,seek.window)		
 		seek.target=CreateComboBox(92,10,ClientWidth(seek.window)-(92+6),28,seek.window)
 		ReadMonkeyTargets(host.monkeypath,seek.target,host.options.activetarget)		
 		Return seek
 	End Function
+
 End Type
 
 Type TReplaceRequester Extends TRequester
@@ -2003,7 +2422,7 @@ Type TServerPanel Extends TToolPanel
 	Method OnEvent()
 		Local	url$,p,t$
 		If htmlview 
-'			PollServer
+			PollServer
 			If EventSource()=htmlview
 				Select EventID()
 					Case EVENT_GADGETACTION				'NAVIGATEREQUEST
@@ -2015,7 +2434,7 @@ Type TServerPanel Extends TToolPanel
 		
 	Method Go(url$,internal=False)
 		Local	node:TNode
-'		DebugLog "Go!"
+		DebugLog "Go:"+url
 		HtmlViewGo htmlview,url
 		host.SelectPanel Self
 		ActivateGadget htmlview			
@@ -2227,7 +2646,7 @@ Type THelpPanel Extends TToolPanel
 					url$=String( EventExtra() )
 					
 					
-					If url[..5]="http:" And Not url.StartsWith(WIKI_URL) And Not url.StartsWith(CLOUD)
+					If url[..5]="http:" 'And Not url.StartsWith(WIKI_URL) And Not url.StartsWith(CLOUD)
 						OpenURL url
 					'Else If url.EndsWith( "\modules\index.html" )
 					'	OpenURL url
@@ -2258,10 +2677,10 @@ Type THelpPanel Extends TToolPanel
 	
 	Method Home()		
 		Local url$		
-		url="monkey:/docs/html/Home.html"
+		url="monkey:/docs/html/Index.html"		
 		Go url
 	End Method
-	
+		
 	Method Go(url$,internal=False)
 		Local	node:TNode
 		
@@ -2272,15 +2691,6 @@ Type THelpPanel Extends TToolPanel
 
 		DebugLog "url="+url
 		
-		If url.startsWith("wiki:")
-			url=url[5..]
-			If host.options.offlinedocs
-				url=host.monkeypath+WIKI_LOCAL+url+WIKI_LOCAL_SUFFIX
-			Else
-				url=WIKI_URL+url+WIKI_ARGS
-			EndIf
-		EndIf
-
 		If host.options.externalhelp And Not internal
 			PollSystem
 			OpenURL url
@@ -2290,7 +2700,6 @@ Type THelpPanel Extends TToolPanel
 		EndIf
 		
 		DebugLog "go:"+url
-
 		HtmlViewGo htmlview,url
 	
 		If host.currentpanel<>Self oldpanel=host.currentpanel
@@ -5365,6 +5774,7 @@ Type TOpenCode Extends TToolPanel
 			EndIf
 			If ismonkey 
 				l$ = host.monkeyhelp.link(a$)				
+				DebugLog "got "+l+" for "+a
 				If l<>"" host.helppanel.go l$
 			EndIf
 		Else
@@ -5547,7 +5957,7 @@ EndRem
 			host.execute cmd,"Building "+StripExt(StripDir(path))	',exe$
 		Else
 			If ishtml
-				host.helppanel.Go "file://"+path
+				host.Serve path
 			Else
 'see what the system shell thinks of the file
 				Local cd$=CurrentDir()
@@ -6216,7 +6626,7 @@ Type TCodePlay
 ' read ini
 		stream=ReadFile(inipath)
 		If Not stream
-			Notify "ini file failed to read:"+inipath
+'			Notify "ini file failed to read:"+inipath
 			AddDefaultProj "monkey|."
 			Return
 		EndIf
@@ -6338,6 +6748,21 @@ Type TCodePlay
 			running=False
 		EndIf
 	End Method
+	
+	Method Serve(filepath$)
+		If options.runserver=False
+			helppanel.Go "file://"+filepath
+		Else		
+			Local dir$=ExtractDir(filepath)
+			Local file$=StripDir(filepath)
+
+			Local port=8080	'serverpanel.Serve(dir)
+
+			RunServer file,port
+
+			helppanel.Go "http://localhost:"+port+"/"+file		
+		EndIf		
+	End Method
 
 	Method DebugExit()
 		If debugcode
@@ -6402,6 +6827,7 @@ Type TCodePlay
 			Next			
 		EndIf
 ' debug buttons
+
 		If mode = DEBUGMODE And debugtree.cancontinue Then
 			If GadgetItemIcon( toolbar, TB_BUILDRUN ) = TB_BUILDRUN Then
 				ModifyGadgetItem( toolbar, TB_BUILDRUN, "", 0, TB_CONTINUE, "Continue" )
@@ -6411,6 +6837,7 @@ Type TCodePlay
 				ModifyGadgetItem( toolbar, TB_BUILDRUN, "", 0, TB_BUILDRUN, "Build and Run" )
 			EndIf
 		EndIf
+
 		For i=TB_STEP To TB_STEPOUT
 			If mode=DEBUGMODE And debugtree.cancontinue Then
 				EnableGadgetItem toolbar,i
@@ -6424,6 +6851,8 @@ Type TCodePlay
 		Else
 			DisableGadgetItem toolbar,TB_STOP
 		EndIf		
+
+
 	End Method
 	
 	Method IsSourceOpen(path$)
@@ -6823,7 +7252,7 @@ Type TCodePlay
 	
 
 		toolbar=CreateToolbar("incbin::monktoolbar.png",0,0,0,0,window )
-		RemoveGadgetItem toolbar, TB_CONTINUE
+'		RemoveGadgetItem toolbar, TB_CONTINUE
 		
 		SetToolbarTips toolbar, ["New","Open","Close","Save","","Cut","Copy","Paste","Find","",..
 		                         "Build","Build and Run","Step","Step In","Step Out","Stop","","Home","Back","Forward"]
@@ -6994,6 +7423,8 @@ EndRem
 		helppanel.Home
 	End Method
 
+	Field targetmenu:TGadget
+
 	Method InitMenu()
 		Local menu:TGadget
 		Local file:TGadget
@@ -7071,21 +7502,26 @@ EndRem
 		CreateMenu "Block Outdent",MENUOUTDENT,edit,KEY_OPENBRACKET,MENUMOD
 		CreateMenu "",0,edit
 		CreateMenu "&Find...",MENUFIND,edit,KEY_F,MENUMOD
+		CreateMenu "Find Next",MENUFINDNEXT,edit,KEY_F3
+
 ?MacOS
-		CreateMenu "Find Next",MENUFINDNEXT,edit,KEY_G,MENUMOD
+'		CreateMenu "Find Next",MENUFINDNEXT,edit,KEY_G,MENUMOD
 		CreateMenu "&Replace...",MENUREPLACE,edit,KEY_H,MENUMOD
 		CreateMenu "&Goto Line...",MENUGOTO,edit,KEY_L,MENUMOD
 ?Not MacOS
-		CreateMenu "Find Next",MENUFINDNEXT,edit,KEY_F3
+'		CreateMenu "Find Next",MENUFINDNEXT,edit,KEY_F3
 		CreateMenu "&Replace...",MENUREPLACE,edit,KEY_H,MENUMOD
 		CreateMenu "&Goto Line...",MENUGOTO,edit,KEY_G,MENUMOD
 ?
+
 		CreateMenu "",0,edit
 		CreateMenu "Find in F&iles",MENUFINDINFILES,edit,KEY_F,MENUMOD|MODIFIER_SHIFT
 		
 		program=CreateMenu("&Program",0,menu)
 		CreateMenu "&Build",MENUBUILD,program,KEY_B,MENUMOD
 		CreateMenu "Build and &Run",MENURUN,program,KEY_R,MENUMOD
+
+		targetmenu=CreateMenu("Target",0,program)
 
 		buildoptions=CreateMenu("Build Options",0,program)
 		debugenable=CreateMenu("Debug Build",MENUDEBUGENABLED,buildoptions)
@@ -7141,6 +7577,9 @@ EndRem
 		EndIf
 		
 		RefreshRecentFiles
+		
+		RefreshTargetList
+		
 		UpdateWindowMenu window
 	End Method
 
@@ -7167,7 +7606,64 @@ EndRem
 			activepanel.invoke TOOLBUILD
 		EndIf
 	End Method
+	
+	
+	Method RefreshTargetList()
+
+		Local cd$=CurrentDir()
+		ChangeDir monkeypath+"/bin"
+
+		Local cmd$
+?win32
+		cmd="transcc_winnt"
+?macos
+		cmd="./transcc_macos"
+?
+		Local process:TProcess=CreateProcess( cmd$,HIDECONSOLE )
+		If Not process
+			'ERROR! can't run trans?
+			Return
+		EndIf
 		
+		Local output$
+		Repeat
+			Delay 10
+			Local bytes:Byte[]=process.pipe.ReadPipe()
+			If bytes
+				output:+String.FromBytes( bytes,bytes.length )
+			EndIf
+		Until Not process.Status()
+		
+		ChangeDir cd
+		
+'		xtra$=String(GadgetItemExtra(target,SelectedGadgetItem(target)))
+'		cmd$:+" -target="+xtra
+'		host.options.activetarget=xtra
+
+		ClearGadgetItems targetmenu
+
+		Local activetarget$=options.activetarget
+		
+		For Local t$=EachIn output.Split( "~n" )
+			t=t.Trim()
+			If Not t.StartsWith( "Valid targets: " ) Continue
+			Local bits$[]=t.Split( " " )
+			For Local i=2 Until bits.length
+				Local flags
+				If bits[i]=activetarget flags=GADGETITEM_DEFAULT
+				
+'				AddMenuItem target," "+bits[i].ToUpper(),flags,-1,"",bits[i]
+				
+				Local item:TGadget=CreateMenu(bits[i],MENUTARGET,targetmenu,0,GADGETITEM_TOGGLE)
+				
+				If i=2 CheckMenu item		
+				
+			Next
+			Return
+		Next
+
+	End Method 
+			
 	Method RefreshBuildOptions()
 		Local monkeybuild
 		Local codepanel:TOpenCode
@@ -7220,11 +7716,11 @@ EndRem
 			history.DisableHistory
 		EndIf
 		
-		If options.runserver 
-			serverpanel.Open(8080)
-		Else
-			serverpanel.Close()
-		EndIf
+'		If options.runserver 
+'			serverpanel.Open(8080)
+'		Else
+'			serverpanel.Close()
+'		EndIf
 		
 	End Method
 	
@@ -7559,7 +8055,7 @@ Type TWiki Extends TNode
 	
 	Field wikimenu:TGadget
 
-	Field spider:TCrawler
+	'Field spider:TCrawler
 	
 	Field wikidir$
 
@@ -7590,7 +8086,7 @@ Type TWiki Extends TNode
 				Case FILETYPE_DIR
 					FetchDir(path,f)
 				Case FILETYPE_FILE
-					spider.LinkFile(path)
+'					spider.LinkFile(path)
 			End Select
 		Next
 	End Method
@@ -7618,7 +8114,7 @@ Type TWiki Extends TNode
 		Next
 
 	End Method
-	
+Rem	
 	Function CreateWiki:TWiki(host:TCodePlay)
 		Local p:TWiki = New TWiki
 
@@ -7646,18 +8142,17 @@ Type TWiki Extends TNode
 		p.wikinode.SetAction(p,TOOLMENU,p.wikinode)
 		p.filesnode.SetAction(p,TOOLMENU,p.filesnode)
 		
-		p.wikimenu=CreateMenu("Wiki",0,Null)
-		CreateMenu "Refresh",MENUREFRESH,p.wikimenu
-		CreateMenu "Cancel",MENUCANCEL,p.wikimenu
-		
-		p.spider=New TCrawler
-		p.spider.setOwner p
-
-		p.FetchDir "",p.wikinode
-		p.BuildIndex
+'		p.wikimenu=CreateMenu("Wiki",0,Null)
+'		CreateMenu "Refresh",MENUREFRESH,p.wikimenu
+'		CreateMenu "Cancel",MENUCANCEL,p.wikimenu		
+'		p.spider=New TCrawler
+'		p.spider.setOwner p
+'		p.FetchDir "",p.wikinode
+		'p.BuildIndex
 		
 		Return p
 	End Function
+EndRem
 
 	Method Invoke(command,argument:Object)
 	
@@ -7717,8 +8212,12 @@ Type TWiki Extends TNode
 
 	Method BuildFiles()
 	End Method
+	Method PullIndex()
+	End Method
 	
-	Method BuildIndex()
+
+Rem	
+	Method BuildWikiIndex()
 		Local index$
 		Local dir$
 		dir=wikidir+"/"+WIKI_SITE_INDEX	
@@ -7755,7 +8254,7 @@ Type TWiki Extends TNode
 					spider.Poll()
 				Else
 					DebugLog "Finished Index"
-					BuildIndex
+					'BuildIndex
 					StopIndex
 				EndIf				
 			Case CRAWLING
@@ -7786,7 +8285,7 @@ Type TWiki Extends TNode
 			Return
 		EndIf
 		
-		spider.Crawl(WIKI_HOST,WIKI_SITE_INDEX,dir,False)
+'		spider.Crawl(WIKI_HOST,WIKI_SITE_INDEX,dir,False)
 
 		state=INDEXING
 			
@@ -7794,7 +8293,21 @@ Type TWiki Extends TNode
 		indexnode.Refresh
 
 	End Method
+EndRem
+
+	Method CrawlWiki()
+	End Method
 	
+	Method StopCrawl()
+	End Method
+
+	Method StopIndex()
+	End Method
+
+End Type
+
+
+Rem	
 	Method CrawlWiki()
 		Local dir$=wikidir
 		
@@ -8063,5 +8576,6 @@ Type TGet
 End Type
 
 
+EndRem
 
 
