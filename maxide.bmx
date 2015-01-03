@@ -4343,7 +4343,7 @@ Type TOpenCode Extends TToolPanel
 			If pos>src.length Exit	'fixed endrem on lastline overrun
 			p=src.FindLast("rem",src.length-pos)
 			If p=-1 Exit						
-			If isntalphanumeric(src[p+3]) And IsFirstCharOnLine(src,p) Return p			
+			If ( p>=src.length-3 Or isntalphanumeric(src[p+3]) ) And IsFirstCharOnLine(src,p) Return p			
 			pos=p-1
 		Wend
 		Return -1
