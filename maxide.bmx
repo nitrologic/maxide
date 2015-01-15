@@ -24,19 +24,25 @@
 
 Strict
 
-Framework MaxGUI.Drivers
+Framework brl.standardio
+
+?macos
+Import MaxGUI.CocoaMaxGui
+?win32
+Import MaxGUI.Win32MaxGUIEx
+?linux
+Import bah.gtkmaxgui
+Import bah.gtkwebgtkhtml
+'Import bah.gtkwebmozilla
+Import bah.maxguitextareascintilla
+?
 Import MaxGUI.ProxyGadgets
 
 ?Win32
 Import "maxicons.o"
 ?
 
-'Import bah.gtkmaxgui
-'Import bah.gtkwebgtkhtml
-'Import bah.gtkwebmozilla
-
 Import brl.eventqueue
-Import brl.standardio
 Import brl.filesystem
 Import brl.system
 Import brl.ramstream
@@ -56,7 +62,7 @@ Const DEFAULT_LANGUAGEPATH$ = "incbin::default.language.ini"
 Incbin "window_icon.png"
 ?
 
-Const IDE_VERSION$="1.44 beta"
+Const IDE_VERSION$="1.44 beta [ng]"
 Const TIMER_FREQUENCY=15
 
 AppTitle = "MaxIDE "+IDE_VERSION
@@ -175,6 +181,25 @@ Const MENUCOMMIT=59
 Const MENUCLOSEOTHERS=60
 
 Const MENUTHREADEDENABLED=61
+
+Const MENUVERBOSEENABLED=62
+
+
+Const MENUPLATFORM=80
+Const MENUWIN32ENABLED=81
+Const MENULINUXENABLED=82
+Const MENUMACOSXENABLED=83
+Const MENURASPBERRYPIENABLED=84
+Const MENUANDROIDENABLED=85
+
+Const MENUARCHITECTURE=90
+Const MENUX86ENABLED=91
+Const MENUX64ENABLED=92
+Const MENUPPCENABLED=93
+Const MENUARMENABLED=94
+Const MENUARMEABIV5ENABLED=95
+Const MENUARMEABIV7AENABLED=96
+Const MENUARM64V8AENABLED=97
 
 Const MENURECENT=256
 
@@ -2951,6 +2976,7 @@ Type TProjects Extends TNode
 	End Function
 End Type
 
+?Not bmxng
 Type TByteBuffer Extends TStream
 	Field	bytes:Byte[]
 	Field	readpointer
@@ -3011,6 +3037,68 @@ Type TByteBuffer Extends TStream
 		Return res
 	End Method
 End Type
+?bmxng
+Type TByteBuffer Extends TStream
+	Field	bytes:Byte[]
+	Field	readpointer:Long
+
+	Method Read:Long( buf:Byte Ptr,count:Long )
+		If count>readpointer count=readpointer
+		If Not count Return
+		MemCopy buf,bytes,count
+		readpointer:-count
+		If readpointer MemMove bytes,Varptr bytes[count],readpointer
+		Return count
+	End Method
+	
+	Method ReadLine$()
+		For Local i:Int = 0 Until readpointer
+			If bytes[i]=10 Or bytes[i] = 0 Then
+				Local tmpBytes:Byte[] = New Byte[i+1]
+				If i And bytes[i-1] = 13 Then i:-1
+				Read(tmpBytes,tmpBytes.length)
+				Return String.FromBytes(tmpBytes, i)
+			EndIf
+		Next
+	EndMethod
+	
+	Method WriteFromPipe( pipe:TPipeStream )
+		Local	n,m,count = pipe.ReadAvail()
+		n=readpointer+count
+		If n>bytes.length
+			m=Max(bytes.length*1.5,n)
+			bytes=bytes[..m]
+		EndIf
+		pipe.Read( Varptr bytes[readpointer], count )
+		readpointer=n
+		Return count
+	EndMethod
+	
+	Method Write:Long( buf:Byte Ptr,count:Long )
+		Local	n:Long,m:Long
+		n=readpointer+count
+		If n>bytes.length
+			m=Max(bytes.length*1.5,n)
+			bytes=bytes[..m]
+		EndIf
+		MemCopy Varptr bytes[readpointer],buf,count
+		readpointer=n
+		Return count
+	End Method	
+	
+	Method LineAvail()
+		For Local i:Int = 0 Until readpointer
+			If bytes[i]=10 Return True
+		Next
+	End Method
+
+	Method FlushBytes:Byte[]()
+		Local res:Byte[] = bytes[..readpointer]
+		readpointer = 0
+		Return res
+	End Method
+End Type
+?
 
 Type TObj
 	Field	addr$,sync,refs,syncnext
@@ -4936,8 +5024,8 @@ Type TOpenCode Extends TToolPanel
 		Return True
 	End Method
 
-	Method BuildSource(quick,debug,threaded,gui,run)
-		Local cmd$,out$,arg$		
+	Method BuildSource(quick,debug,threaded,gui,run, verbose, platform:String = Null, architecture:String = Null)
+		Local cmd$,out$,arg$
 		If isbmx Or isc Or iscpp
 			cmd$=quote(host.bmkpath)
 			cmd$:+" makeapp"
@@ -4946,6 +5034,11 @@ Type TOpenCode Extends TToolPanel
 			If threaded cmd$:+" -h"
 			If gui cmd$:+" -t gui"
 			If Not quick cmd$:+" -a"
+			If verbose cmd :+ " -v"
+
+			If platform cmd :+ " -l " + platform
+			If architecture cmd :+ " -g " + architecture
+
 			If debug Or threaded
 				out=StripExt(host.FullPath(path))
 				If debug out:+".debug"
@@ -5051,9 +5144,9 @@ Type TOpenCode Extends TToolPanel
 			Case TOOLREPLACE
 				Return FindReplace(String(argument))	
 			Case TOOLBUILD
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False, host.verboseenabled, host.GetPlatform(), host.GetArchitecture()
 			Case TOOLRUN
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True, host.verboseenabled, host.GetPlatform(), host.GetArchitecture()
 			Case TOOLLOCK
 				SetLocked True
 			Case TOOLUNLOCK
@@ -5240,13 +5333,14 @@ Type TCodePlay
 	Field coderoot:TNode
 	Field navbar:TNavBar	
 
-	Field mode
+	Field Mode
 	Field debugcode:TOpenCode
 
 	Field quickenable:TGadget,quickenabled	'menu,state
 	Field debugenable:TGadget,debugenabled	'menu,state
 	Field threadedenable:TGadget,threadedenabled
 	Field guienable:TGadget,guienabled		'menu,state
+	Field verboseenable:TGadget,verboseenabled		'menu,state
 	Field quickhelp:TQuickHelp
 	Field running
 	Field recentmenu:TGadget
@@ -5258,6 +5352,26 @@ Type TCodePlay
 	Field winsize:TRect=New TRect
 	Field winmax,tooly,splitpos,debugview,navtab
 	Field progress,splitorientation
+
+	Field win32enable:TGadget	'menu
+	Field linuxenable:TGadget	'menu
+	Field macosxenable:TGadget	'menu
+	Field raspberrypienable:TGadget	'menu
+	Field androidenable:TGadget	'menu
+	
+	Field platformenabled:Int[5]
+	Const PLATFORMOFFSET:Int = 81
+
+	Field x86enable:TGadget	'menu
+	Field x64enable:TGadget	'menu
+	Field ppcenable:TGadget	'menu
+	Field armenable:TGadget	'menu
+	Field armeabiv5enable:TGadget	'menu
+	Field armeabiv7aenable:TGadget	'menu
+	Field arm64v8aenable:TGadget	'menu
+	
+	Field architectureenabled:Int[7]
+	Const ARCHITECTUREOFFSET:Int = 91
 
 ?MacOS	
 	Method RanlibMods()
@@ -5369,7 +5483,23 @@ Type TCodePlay
 		quickenabled=False
 		debugenabled=True
 		threadedenabled=False
-		guienabled=True	
+		guienabled=True
+		verboseenabled=False
+		For Local i:Int = 0 Until platformenabled.length
+			platformenabled[i] = False
+		Next
+?win32
+		platformenabled[MENUWIN32ENABLED - PLATFORMOFFSET] = True
+?linuxx86
+		platformenabled[MENULINUXENABLED - PLATFORMOFFSET] = True
+?linuxx64
+		platformenabled[MENULINUXENABLED - PLATFORMOFFSET] = True
+?macos
+		platformenabled[MENUMACOSXENABLED - PLATFORMOFFSET] = True
+?raspberrypi
+		platformenabled[MENURASPBERRYPIENABLED - PLATFORMOFFSET] = True
+?
+
 		splitpos=200;splitorientation = SPLIT_VERTICAL
 ' read ini
 		stream=ReadFile(bmxpath+"/cfg/ide.ini")
@@ -5407,6 +5537,22 @@ Type TCodePlay
 					threadedenabled=Int(b$)
 				Case "prg_gui"
 					guienabled=Int(b$)
+				Case "prg_verbose"
+					verboseenabled=Int(b$)
+				Case "prg_platform"
+					For Local i:Int = 0 Until platformenabled.length
+						platformenabled[i] = False
+						If i = Int(b$) Then
+							platformenabled[i] = True
+						End If
+					Next
+				Case "prg_architecture"
+					For Local i:Int = 0 Until architectureenabled.length
+						architectureenabled[i] = False
+						If i = Int(b$) Then
+							architectureenabled[i] = True
+						End If
+					Next
 				Case "cmd_line"
 					cmdline=b$
 				Case "prg_locked"
@@ -5448,6 +5594,17 @@ Type TCodePlay
 		stream.WriteLine "prg_debug="+debugenabled
 		stream.WriteLine "prg_threaded="+threadedenabled
 		stream.WriteLine "prg_gui="+guienabled
+		stream.WriteLine "prg_verbose="+verboseenabled
+		For Local i:Int = 0 Until platformenabled.length
+			If platformenabled[i] Then
+				stream.WriteLine "prg_platform=" + i
+			End If
+		Next
+		For Local i:Int = 0 Until architectureenabled.length
+			If architectureenabled[i] Then
+				stream.WriteLine "prg_architecture=" + i
+			End If
+		Next
 		stream.WriteLine "win_size="+winsize.ToString()
 		stream.WriteLine "win_max="+winmax
 		stream.WriteLine "split_position="+SplitterPosition(split)
@@ -5513,7 +5670,7 @@ Type TCodePlay
 	End Method
 	
 	Method SetMode(m)
-		If mode=m Return
+		If Mode=m Return
 		ActivateWindow window
 		Select m
 		Case DEBUGMODE
@@ -5522,7 +5679,7 @@ Type TCodePlay
 		Case EDITMODE
 			navbar.SelectView navtab
 		End Select
-		mode=m
+		Mode=m
 		RefreshToolbar
 	End Method
 	
@@ -5551,7 +5708,7 @@ Type TCodePlay
 			Next			
 		EndIf
 ' debug buttons
-		If mode = DEBUGMODE And debugtree.cancontinue Then
+		If Mode = DEBUGMODE And debugtree.cancontinue Then
 			If GadgetItemIcon( toolbar, TB_BUILDRUN ) = TB_BUILDRUN Then
 				ModifyGadgetItem( toolbar, TB_BUILDRUN, "", GADGETITEM_LOCALIZED, TB_CONTINUE, "{{tb_continue}}" )
 			EndIf
@@ -5561,7 +5718,7 @@ Type TCodePlay
 			EndIf
 		EndIf
 		For i=TB_STEP To TB_STEPOUT
-			If mode=DEBUGMODE And debugtree.cancontinue Then
+			If Mode=DEBUGMODE And debugtree.cancontinue Then
 				EnableGadgetItem toolbar,i
 			Else
 				DisableGadgetItem toolbar,i
@@ -5647,6 +5804,11 @@ Type TCodePlay
 		
 		If buildall cmd$:+"-a "
 		If threadedenabled cmd:+"-h "
+		If verboseenabled cmd:+"-v "
+		Local platform:String = GetPlatform()
+		Local architecture:String = GetArchitecture()
+		If platform cmd :+ "-l " + platform + " "
+		If architecture cmd :+ "-g " + architecture + " "
 		
 		Execute cmd,LocalizeString("{{output_msg_buildingmods}}")
 	End Method
@@ -5944,7 +6106,7 @@ Type TCodePlay
 		
 		ReadConfig()
 
-		toolbar=CreateToolbar("incbin::toolbar.png",0,0,0,0,window )
+		toolbar=CreateToolBar("incbin::toolbar.png",0,0,0,0,window )
 		
 		RemoveGadgetItem toolbar, TB_CONTINUE
 		
@@ -6095,6 +6257,7 @@ Type TCodePlay
 		Local menu:TGadget,file:TGadget,edit:TGadget,program:TGadget,tools:TGadget
 		Local help:TGadget,buildoptions:TGadget
 		Local buildmods:TGadget,buildallmods:TGadget,syncmods:TGadget,docmods:TGadget
+		Local platform:TGadget,architecture:TGadget
 
 		Local MENUMOD=MODIFIER_COMMAND
 
@@ -6180,6 +6343,7 @@ Type TCodePlay
 		CreateMenu "{{menu_program_stepin}}",MENUSTEPIN,program,KEY_F10
 		CreateMenu "{{menu_program_stepout}}",MENUSTEPOUT,program,KEY_F11
 		CreateMenu "{{menu_program_terminate}}",MENUSTOP,program
+		CreateMenu "",0,program
 		buildoptions=CreateMenu("{{menu_program_buildoptions}}",0,program)
 		quickenable=CreateMenu("{{menu_program_buildoptions_quick}}",MENUQUICKENABLED,buildoptions)
 		debugenable=CreateMenu("{{menu_program_buildoptions_debug}}",MENUDEBUGENABLED,buildoptions)
@@ -6188,6 +6352,31 @@ Type TCodePlay
 				threadedenable=CreateMenu("{{menu_program_buildoptions_threaded}}",MENUTHREADEDENABLED,buildoptions)
 		EndIf
 		guienable=CreateMenu("{{menu_program_buildoptions_guiapp}}",MENUGUIENABLED,buildoptions)
+		verboseenable=CreateMenu("{{menu_program_buildoptions_verbose}}",MENUVERBOSEENABLED,buildoptions)
+
+		platform=CreateMenu("{{menu_program_platform}}",0,program)
+?Not raspberrypi
+		win32enable=CreateMenu("{{menu_program_platform_win32}}",MENUWIN32ENABLED,platform)
+?linux
+		linuxenable=CreateMenu("{{menu_program_platform_linux}}",MENULINUXENABLED,platform)
+?
+?macos
+		macosxenable=CreateMenu("{{menu_program_platform_macosx}}",MENUMACOSXENABLED,platform)
+?
+		raspberrypienable=CreateMenu("{{menu_program_platform_raspberrypi}}",MENURASPBERRYPIENABLED,platform)
+?Not raspberrypi
+		androidenable=CreateMenu("{{menu_program_platform_android}}",MENUANDROIDENABLED,platform)
+?
+
+		architecture=CreateMenu("{{menu_program_arch}}",0,program)
+		x86enable=CreateMenu("{{menu_program_arch_x86}}",MENUX86ENABLED,architecture)
+		x64enable=CreateMenu("{{menu_program_arch_x64}}",MENUX64ENABLED,architecture)
+		ppcenable=CreateMenu("{{menu_program_arch_ppc}}",MENUPPCENABLED,architecture)
+		armenable=CreateMenu("{{menu_program_arch_arm}}",MENUARMENABLED,architecture)
+		armeabiv5enable=CreateMenu("{{menu_program_arch_armeabiv5}}",MENUARMEABIV5ENABLED,architecture)
+		armeabiv7aenable=CreateMenu("{{menu_program_arch_armeabiv7a}}",MENUARMEABIV7AENABLED,architecture)
+		arm64v8aenable=CreateMenu("{{menu_program_arch_arm64v8a}}",MENUARM64V8AENABLED,architecture)
+		
 		CreateMenu "",0,program
 		CreateMenu "{{menu_program_lockbuildfile}}",MENULOCKBUILD,program
 		CreateMenu "{{menu_program_unlockbuildfile}}",MENUUNLOCKBUILD,program
@@ -6209,6 +6398,15 @@ Type TCodePlay
 		If debugenabled CheckMenu debugenable
 		If threadedenabled CheckMenu threadedenable
 		If guienabled CheckMenu guienable
+		If verboseenabled CheckMenu verboseenable
+		
+		For Local i:Int = 0 Until platformenabled.length
+			If platformenabled[i] Then
+				UpdatePlatformMenus(i + PLATFORMOFFSET)
+				DefaultArchitectureMenuForPlatform(i + PLATFORMOFFSET)
+			End If
+		Next
+		'UpdateArchitectureMenus()
 		
 ?Win32		
 		Local mingw$=getenv_("MINGW")
@@ -6226,7 +6424,7 @@ Type TCodePlay
 	End Method
 
 	Method RunCode()
-		If mode=DEBUGMODE And debugtree.cancontinue
+		If Mode=DEBUGMODE And debugtree.cancontinue
 			output.Go()
 			Return
 		EndIf
@@ -6415,6 +6613,29 @@ Type TCodePlay
 				EndIf
 				UpdateWindowMenu window
 
+			Case MENUVERBOSEENABLED
+				If verboseenabled
+					verboseenabled=False
+					UncheckMenu verboseenable							
+				Else
+					verboseenabled=True
+					CheckMenu verboseenable
+				EndIf
+				UpdateWindowMenu window
+
+			Case MENUWIN32ENABLED, MENULINUXENABLED, MENUMACOSXENABLED, MENURASPBERRYPIENABLED, MENUANDROIDENABLED
+
+				UpdatePlatformMenus(menu)
+				
+				UpdateWindowMenu window
+
+			Case MENUX86ENABLED, MENUX64ENABLED, MENUPPCENABLED, MENUARMENABLED, ..
+					MENUARMEABIV5ENABLED, MENUARMEABIV7AENABLED, MENUARM64V8AENABLED
+				
+				UpdateArchitectureMenus(menu)
+				
+				UpdateWindowMenu window
+
 			Case MENUIMPORTBB
 				ImportBB
 				
@@ -6472,6 +6693,223 @@ Type TCodePlay
 		EndIf
 	End Method
 	
+	Method UpdatePlatformMenus(menu:Int)
+		Local index:Int = menu - PLATFORMOFFSET
+		
+		Local platformChanged:Int = Not platformenabled[index]
+		
+		For Local i:Int = 0 Until platformenabled.Length
+			If platformenabled[i] And i <> index Then
+				Select PLATFORMOFFSET + i
+					Case MENUWIN32ENABLED
+						UncheckMenu win32enable
+					Case MENULINUXENABLED
+						UncheckMenu linuxenable
+					Case MENUMACOSXENABLED
+						UncheckMenu macosxenable
+					Case MENURASPBERRYPIENABLED
+						UncheckMenu raspberrypienable
+					Case MENUANDROIDENABLED
+						UncheckMenu androidenable
+				End Select
+			End If
+			platformenabled[i] = False
+		Next
+
+		platformenabled[index] = True
+		Select menu
+			Case MENUWIN32ENABLED
+				CheckMenu win32enable
+			Case MENULINUXENABLED
+				CheckMenu linuxenable
+			Case MENUMACOSXENABLED
+				CheckMenu macosxenable
+			Case MENURASPBERRYPIENABLED
+				CheckMenu raspberrypienable
+			Case MENUANDROIDENABLED
+				CheckMenu androidenable
+		End Select
+		
+		UpdateArchitectureMenuState menu
+		
+		If platformChanged Then
+			DefaultArchitectureMenuForPlatform(menu)
+		End If
+	End Method
+	
+	Method UpdateArchitectureMenus(menu:Int)
+		Local index:Int = menu - ARCHITECTUREOFFSET
+
+		For Local i:Int = 0 Until architectureenabled.Length
+			If architectureenabled[i] And i <> index Then
+				Select ARCHITECTUREOFFSET + i
+					Case MENUX86ENABLED
+						UncheckMenu x86enable
+					Case MENUX64ENABLED
+						UncheckMenu x64enable
+					Case MENUPPCENABLED
+						UncheckMenu ppcenable
+					Case MENUARMENABLED
+						UncheckMenu armenable
+					Case MENUARMEABIV5ENABLED
+						UncheckMenu armeabiv5enable
+					Case MENUARMEABIV7AENABLED
+						UncheckMenu armeabiv7aenable
+					Case MENUARM64V8AENABLED
+						UncheckMenu arm64v8aenable
+				End Select
+			End If
+			architectureenabled[i] = False
+		Next
+		
+		architectureenabled[index] = True
+		Select menu
+			Case MENUX86ENABLED
+				CheckMenu x86enable
+			Case MENUX64ENABLED
+				CheckMenu x64enable
+			Case MENUPPCENABLED
+				CheckMenu ppcenable
+			Case MENUARMENABLED
+				CheckMenu armenable
+			Case MENUARMEABIV5ENABLED
+				CheckMenu armeabiv5enable
+			Case MENUARMEABIV7AENABLED
+				CheckMenu armeabiv7aenable
+			Case MENUARM64V8AENABLED
+				CheckMenu arm64v8aenable
+		End Select
+	End Method
+	
+	Method UpdateArchitectureMenuState(platformMenu:Int)
+		DisableMenu x86enable
+		DisableMenu x64enable
+		DisableMenu ppcenable
+		DisableMenu armenable
+		DisableMenu armeabiv5enable
+		DisableMenu armeabiv7aenable
+		DisableMenu arm64v8aenable
+
+		Select platformMenu
+			Case MENUWIN32ENABLED, MENULINUXENABLED
+				EnableMenu x86enable
+				EnableMenu x64enable
+			Case MENUMACOSXENABLED
+?Not ppc
+				EnableMenu x86enable
+				EnableMenu x64enable
+?ppc
+				EnableMenu ppcenable
+?
+			Case MENURASPBERRYPIENABLED
+				EnableMenu armenable
+			Case MENUANDROIDENABLED
+				EnableMenu x86enable
+				EnableMenu x64enable
+				EnableMenu armeabiv5enable
+				EnableMenu armeabiv7aenable
+				EnableMenu arm64v8aenable
+		End Select
+	End Method
+
+	Method DefaultArchitectureMenuForPlatform(platformMenu:Int)
+		For Local i:Int = 0 Until architectureenabled.Length
+			If architectureenabled[i] Then
+				Select ARCHITECTUREOFFSET + i
+					Case MENUX86ENABLED
+						UncheckMenu x86enable
+					Case MENUX64ENABLED
+						UncheckMenu x64enable
+					Case MENUPPCENABLED
+						UncheckMenu ppcenable
+					Case MENUARMENABLED
+						UncheckMenu armenable
+					Case MENUARMEABIV5ENABLED
+						UncheckMenu armeabiv5enable
+					Case MENUARMEABIV7AENABLED
+						UncheckMenu armeabiv7aenable
+					Case MENUARM64V8AENABLED
+						UncheckMenu arm64v8aenable
+				End Select
+			End If
+			architectureenabled[i] = False
+		Next
+
+		Select platformMenu
+			Case MENUWIN32ENABLED, MENULINUXENABLED
+?x86
+				CheckMenu x86enable
+				architectureenabled[MENUX86ENABLED - ARCHITECTUREOFFSET] = True
+?x64
+				CheckMenu x64enable
+				architectureenabled[MENUX64ENABLED - ARCHITECTUREOFFSET] = True
+?
+			Case MENUMACOSXENABLED
+?x86
+				CheckMenu x86enable
+				architectureenabled[MENUX86ENABLED - ARCHITECTUREOFFSET] = True
+?x64
+				CheckMenu x64enable
+				architectureenabled[MENUX64ENABLED - ARCHITECTUREOFFSET] = True
+?ppc
+				CheckMenu ppcenable
+				architectureenabled[MENUPPCENABLED - ARCHITECTUREOFFSET] = True
+?
+			Case MENURASPBERRYPIENABLED
+				CheckMenu armenable
+				architectureenabled[MENUARMENABLED - ARCHITECTUREOFFSET] = True
+			Case MENUANDROIDENABLED
+				CheckMenu armeabiv5enable
+				architectureenabled[MENUARMEABIV5ENABLED - ARCHITECTUREOFFSET] = True
+		End Select
+	End Method
+	
+	Method GetPlatform:String()
+		For Local i:Int = 0 Until platformenabled.Length
+			If platformenabled[i] Then
+				Select PLATFORMOFFSET + i
+					Case MENUWIN32ENABLED
+						Return "win32"
+					Case MENULINUXENABLED
+						Return "linux"
+					Case MENUMACOSXENABLED
+						Return "macos"
+					Case MENURASPBERRYPIENABLED
+						Return "raspberrypi"
+					Case MENUANDROIDENABLED
+						Return "android"
+				End Select
+			End If
+		Next
+		
+		Return Null
+	End Method
+	
+	Method GetArchitecture:String()
+		For Local i:Int = 0 Until architectureenabled.Length
+			If architectureenabled[i] Then
+				Select ARCHITECTUREOFFSET + i
+					Case MENUX86ENABLED
+						Return "x86"
+					Case MENUX64ENABLED
+						Return "x64"
+					Case MENUPPCENABLED
+						Return "ppc"
+					Case MENUARMENABLED
+						Return "arm"
+					Case MENUARMEABIV5ENABLED
+						Return "armeabi"
+					Case MENUARMEABIV7AENABLED
+						Return "armeabiv7a"
+					Case MENUARM64V8AENABLED
+						Return "arm64v8a"
+				End Select
+			End If
+		Next
+		
+		Return Null
+	End Method
+
 	Method poll()
 		
 		Local	src:TGadget
