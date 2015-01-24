@@ -191,6 +191,7 @@ Const MENULINUXENABLED=82
 Const MENUMACOSXENABLED=83
 Const MENURASPBERRYPIENABLED=84
 Const MENUANDROIDENABLED=85
+Const MENUEMSCRIPTENENABLED=86
 
 Const MENUARCHITECTURE=90
 Const MENUX86ENABLED=91
@@ -200,6 +201,7 @@ Const MENUARMENABLED=94
 Const MENUARMEABIV5ENABLED=95
 Const MENUARMEABIV7AENABLED=96
 Const MENUARM64V8AENABLED=97
+Const MENUJSENABLED=98
 
 Const MENURECENT=256
 
@@ -5358,8 +5360,9 @@ Type TCodePlay
 	Field macosxenable:TGadget	'menu
 	Field raspberrypienable:TGadget	'menu
 	Field androidenable:TGadget	'menu
+	Field emscriptenenable:TGadget	'menu
 	
-	Field platformenabled:Int[5]
+	Field platformenabled:Int[6]
 	Const PLATFORMOFFSET:Int = 81
 
 	Field x86enable:TGadget	'menu
@@ -5369,8 +5372,9 @@ Type TCodePlay
 	Field armeabiv5enable:TGadget	'menu
 	Field armeabiv7aenable:TGadget	'menu
 	Field arm64v8aenable:TGadget	'menu
+	Field jsenable:TGadget	'menu
 	
-	Field architectureenabled:Int[7]
+	Field architectureenabled:Int[8]
 	Const ARCHITECTUREOFFSET:Int = 91
 
 ?MacOS	
@@ -5498,6 +5502,8 @@ Type TCodePlay
 		platformenabled[MENUMACOSXENABLED - PLATFORMOFFSET] = True
 ?raspberrypi
 		platformenabled[MENURASPBERRYPIENABLED - PLATFORMOFFSET] = True
+?emscripten
+		platformenabled[MENUEMSCRIPTENENABLED - PLATFORMOFFSET] = True
 ?
 
 		splitpos=200;splitorientation = SPLIT_VERTICAL
@@ -6367,6 +6373,7 @@ Type TCodePlay
 ?Not raspberrypi
 		androidenable=CreateMenu("{{menu_program_platform_android}}",MENUANDROIDENABLED,platform)
 ?
+		emscriptenenable=CreateMenu("{{menu_program_platform_emscripten}}",MENUEMSCRIPTENENABLED,platform)
 
 		architecture=CreateMenu("{{menu_program_arch}}",0,program)
 		x86enable=CreateMenu("{{menu_program_arch_x86}}",MENUX86ENABLED,architecture)
@@ -6376,6 +6383,7 @@ Type TCodePlay
 		armeabiv5enable=CreateMenu("{{menu_program_arch_armeabiv5}}",MENUARMEABIV5ENABLED,architecture)
 		armeabiv7aenable=CreateMenu("{{menu_program_arch_armeabiv7a}}",MENUARMEABIV7AENABLED,architecture)
 		arm64v8aenable=CreateMenu("{{menu_program_arch_arm64v8a}}",MENUARM64V8AENABLED,architecture)
+		jsenable=CreateMenu("{{menu_program_arch_js}}",MENUJSENABLED,architecture)
 		
 		CreateMenu "",0,program
 		CreateMenu "{{menu_program_lockbuildfile}}",MENULOCKBUILD,program
@@ -6399,11 +6407,24 @@ Type TCodePlay
 		If threadedenabled CheckMenu threadedenable
 		If guienabled CheckMenu guienable
 		If verboseenabled CheckMenu verboseenable
-		
+
+		Local defaultArch:Int = -1
+		For Local i:Int = 0 Until architectureenabled.length
+			If architectureenabled[i] Then
+				defaultArch = i
+				Exit
+			End If
+		Next
+
 		For Local i:Int = 0 Until platformenabled.length
 			If platformenabled[i] Then
 				UpdatePlatformMenus(i + PLATFORMOFFSET)
-				DefaultArchitectureMenuForPlatform(i + PLATFORMOFFSET)
+				If defaultArch < 0 Then
+					DefaultArchitectureMenuForPlatform(i + PLATFORMOFFSET)
+				Else
+					UpdateArchitectureMenus(defaultArch + ARCHITECTUREOFFSET)
+				End If
+				Exit
 			End If
 		Next
 		'UpdateArchitectureMenus()
@@ -6623,14 +6644,16 @@ Type TCodePlay
 				EndIf
 				UpdateWindowMenu window
 
-			Case MENUWIN32ENABLED, MENULINUXENABLED, MENUMACOSXENABLED, MENURASPBERRYPIENABLED, MENUANDROIDENABLED
+			Case MENUWIN32ENABLED, MENULINUXENABLED, MENUMACOSXENABLED, MENURASPBERRYPIENABLED, ..
+					MENUANDROIDENABLED, MENUEMSCRIPTENENABLED
 
 				UpdatePlatformMenus(menu)
 				
 				UpdateWindowMenu window
 
 			Case MENUX86ENABLED, MENUX64ENABLED, MENUPPCENABLED, MENUARMENABLED, ..
-					MENUARMEABIV5ENABLED, MENUARMEABIV7AENABLED, MENUARM64V8AENABLED
+					MENUARMEABIV5ENABLED, MENUARMEABIV7AENABLED, MENUARM64V8AENABLED, ..
+					MENUJSENABLED
 				
 				UpdateArchitectureMenus(menu)
 				
@@ -6711,6 +6734,8 @@ Type TCodePlay
 						UncheckMenu raspberrypienable
 					Case MENUANDROIDENABLED
 						UncheckMenu androidenable
+					Case MENUEMSCRIPTENENABLED
+						UncheckMenu emscriptenenable
 				End Select
 			End If
 			platformenabled[i] = False
@@ -6728,6 +6753,8 @@ Type TCodePlay
 				CheckMenu raspberrypienable
 			Case MENUANDROIDENABLED
 				CheckMenu androidenable
+			Case MENUEMSCRIPTENENABLED
+				CheckMenu emscriptenenable
 		End Select
 		
 		UpdateArchitectureMenuState menu
@@ -6757,6 +6784,8 @@ Type TCodePlay
 						UncheckMenu armeabiv7aenable
 					Case MENUARM64V8AENABLED
 						UncheckMenu arm64v8aenable
+					Case MENUJSENABLED
+						UncheckMenu jsenable
 				End Select
 			End If
 			architectureenabled[i] = False
@@ -6778,6 +6807,8 @@ Type TCodePlay
 				CheckMenu armeabiv7aenable
 			Case MENUARM64V8AENABLED
 				CheckMenu arm64v8aenable
+			Case MENUJSENABLED
+				CheckMenu jsenable
 		End Select
 	End Method
 	
@@ -6789,6 +6820,7 @@ Type TCodePlay
 		DisableMenu armeabiv5enable
 		DisableMenu armeabiv7aenable
 		DisableMenu arm64v8aenable
+		DisableMenu jsenable
 
 		Select platformMenu
 			Case MENUWIN32ENABLED, MENULINUXENABLED
@@ -6809,6 +6841,8 @@ Type TCodePlay
 				EnableMenu armeabiv5enable
 				EnableMenu armeabiv7aenable
 				EnableMenu arm64v8aenable
+			Case MENUEMSCRIPTENENABLED
+				EnableMenu jsenable
 		End Select
 	End Method
 
@@ -6830,6 +6864,8 @@ Type TCodePlay
 						UncheckMenu armeabiv7aenable
 					Case MENUARM64V8AENABLED
 						UncheckMenu arm64v8aenable
+					Case MENUJSENABLED
+						UncheckMenu jsenable
 				End Select
 			End If
 			architectureenabled[i] = False
@@ -6861,6 +6897,9 @@ Type TCodePlay
 			Case MENUANDROIDENABLED
 				CheckMenu armeabiv5enable
 				architectureenabled[MENUARMEABIV5ENABLED - ARCHITECTUREOFFSET] = True
+			Case MENUEMSCRIPTENENABLED
+				CheckMenu jsenable
+				architectureenabled[MENUJSENABLED - ARCHITECTUREOFFSET] = True
 		End Select
 	End Method
 	
@@ -6878,6 +6917,8 @@ Type TCodePlay
 						Return "raspberrypi"
 					Case MENUANDROIDENABLED
 						Return "android"
+					Case MENUEMSCRIPTENENABLED
+						Return "emscripten"
 				End Select
 			End If
 		Next
@@ -6903,6 +6944,8 @@ Type TCodePlay
 						Return "armeabiv7a"
 					Case MENUARM64V8AENABLED
 						Return "arm64v8a"
+					Case MENUJSENABLED
+						Return "js"
 				End Select
 			End If
 		Next
