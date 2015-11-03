@@ -192,6 +192,7 @@ Const MENUMACOSXENABLED=83
 Const MENURASPBERRYPIENABLED=84
 Const MENUANDROIDENABLED=85
 Const MENUEMSCRIPTENENABLED=86
+Const MENUIOSENABLED=87
 
 Const MENUARCHITECTURE=90
 Const MENUX86ENABLED=91
@@ -202,6 +203,8 @@ Const MENUARMEABIV5ENABLED=95
 Const MENUARMEABIV7AENABLED=96
 Const MENUARM64V8AENABLED=97
 Const MENUJSENABLED=98
+Const MENUARMV7ENABLED=99
+Const MENUARM64ENABLED=100
 
 Const MENURECENT=256
 
@@ -295,18 +298,18 @@ Type TQuickHelp
 	End Method
 	
 	Function LoadCommandsTxt:TQuickHelp(bmxpath$)
-		Local	text$
+		Local	Text$
 		Local	qh:TQuickHelp
 		Local	i:Int,c,p,q
 		Local	token$,help$,anchor$
 		Try
-			text=CacheAndLoadText(bmxpath+"/docs/html/Modules/commands.txt")
+			Text=CacheAndLoadText(bmxpath+"/docs/html/Modules/commands.txt")
 		Catch exception:Object
 			Return Null
 		EndTry
-		If Not text Return Null
+		If Not Text Return Null
 		qh=New TQuickHelp
-		For Local l$ = EachIn text.Split("~n")
+		For Local l$ = EachIn Text.Split("~n")
 			For i=0 Until l.length
 				c=l[i]
 				If c=Asc("_") Continue
@@ -794,12 +797,12 @@ Type TGotoRequester Extends TRequester
 	End Method
 
 	Method Poll()
-		Local	line,data,text$
+		Local	line,data,Text$
 		Select EventSource()
 			Case linenumber
 				If EventID() = EVENT_GADGETACTION
-					text = GadgetText(linenumber)
-					If text And (Int(text) <> text) Then SetGadgetText linenumber, Int(text)
+					Text = GadgetText(linenumber)
+					If Text And (Int(Text) <> Text) Then SetGadgetText linenumber, Int(Text)
 				EndIf
 			Case window
 				If EventID()=EVENT_WINDOWCLOSE
@@ -5358,11 +5361,12 @@ Type TCodePlay
 	Field win32enable:TGadget	'menu
 	Field linuxenable:TGadget	'menu
 	Field macosxenable:TGadget	'menu
+	Field iosenable:TGadget	'menu
 	Field raspberrypienable:TGadget	'menu
 	Field androidenable:TGadget	'menu
 	Field emscriptenenable:TGadget	'menu
 	
-	Field platformenabled:Int[6]
+	Field platformenabled:Int[7]
 	Const PLATFORMOFFSET:Int = 81
 
 	Field x86enable:TGadget	'menu
@@ -5373,8 +5377,10 @@ Type TCodePlay
 	Field armeabiv7aenable:TGadget	'menu
 	Field arm64v8aenable:TGadget	'menu
 	Field jsenable:TGadget	'menu
+	Field armv7enable:TGadget	'menu
+	Field arm64enable:TGadget	'menu
 	
-	Field architectureenabled:Int[8]
+	Field architectureenabled:Int[10]
 	Const ARCHITECTUREOFFSET:Int = 91
 
 ?MacOS	
@@ -5834,12 +5840,12 @@ Type TCodePlay
 		Return cmdline
 	End Method
 
-	Method SetCommandLine(text$)
-		cmdline=text
+	Method SetCommandLine(Text$)
+		cmdline=Text
 	End Method
 	
-	Method SetStatus(text$)
-		SetStatusText window,text
+	Method SetStatus(Text$)
+		SetStatusText window,Text
 	End Method
 
 	Method Execute(cmd$,mess$="",post$="",home=True,tool:TTool=Null)
@@ -6368,6 +6374,7 @@ Type TCodePlay
 ?
 ?macos
 		macosxenable=CreateMenu("{{menu_program_platform_macosx}}",MENUMACOSXENABLED,platform)
+		iosenable=CreateMenu("{{menu_program_platform_ios}}",MENUIOSENABLED,platform)
 ?
 		raspberrypienable=CreateMenu("{{menu_program_platform_raspberrypi}}",MENURASPBERRYPIENABLED,platform)
 ?Not raspberrypi
@@ -6384,6 +6391,8 @@ Type TCodePlay
 		armeabiv7aenable=CreateMenu("{{menu_program_arch_armeabiv7a}}",MENUARMEABIV7AENABLED,architecture)
 		arm64v8aenable=CreateMenu("{{menu_program_arch_arm64v8a}}",MENUARM64V8AENABLED,architecture)
 		jsenable=CreateMenu("{{menu_program_arch_js}}",MENUJSENABLED,architecture)
+		armv7enable=CreateMenu("{{menu_program_arch_armv7}}",MENUARMV7ENABLED,architecture)
+		arm64enable=CreateMenu("{{menu_program_arch_arm64}}",MENUARM64ENABLED,architecture)
 		
 		CreateMenu "",0,program
 		CreateMenu "{{menu_program_lockbuildfile}}",MENULOCKBUILD,program
@@ -6645,7 +6654,7 @@ Type TCodePlay
 				UpdateWindowMenu window
 
 			Case MENUWIN32ENABLED, MENULINUXENABLED, MENUMACOSXENABLED, MENURASPBERRYPIENABLED, ..
-					MENUANDROIDENABLED, MENUEMSCRIPTENENABLED
+					MENUANDROIDENABLED, MENUEMSCRIPTENENABLED, MENUIOSENABLED
 
 				UpdatePlatformMenus(menu)
 				
@@ -6653,7 +6662,7 @@ Type TCodePlay
 
 			Case MENUX86ENABLED, MENUX64ENABLED, MENUPPCENABLED, MENUARMENABLED, ..
 					MENUARMEABIV5ENABLED, MENUARMEABIV7AENABLED, MENUARM64V8AENABLED, ..
-					MENUJSENABLED
+					MENUJSENABLED, MENUARMV7ENABLED, MENUARM64ENABLED
 				
 				UpdateArchitectureMenus(menu)
 				
@@ -6730,6 +6739,8 @@ Type TCodePlay
 						UncheckMenu linuxenable
 					Case MENUMACOSXENABLED
 						UncheckMenu macosxenable
+					Case MENUIOSENABLED
+						UncheckMenu iosenable
 					Case MENURASPBERRYPIENABLED
 						UncheckMenu raspberrypienable
 					Case MENUANDROIDENABLED
@@ -6749,6 +6760,8 @@ Type TCodePlay
 				CheckMenu linuxenable
 			Case MENUMACOSXENABLED
 				CheckMenu macosxenable
+			Case MENUIOSENABLED
+				CheckMenu iosenable
 			Case MENURASPBERRYPIENABLED
 				CheckMenu raspberrypienable
 			Case MENUANDROIDENABLED
@@ -6786,6 +6799,10 @@ Type TCodePlay
 						UncheckMenu arm64v8aenable
 					Case MENUJSENABLED
 						UncheckMenu jsenable
+					Case MENUARMV7ENABLED
+						UncheckMenu armv7enable
+					Case MENUARM64ENABLED
+						UncheckMenu arm64enable
 				End Select
 			End If
 			architectureenabled[i] = False
@@ -6809,6 +6826,10 @@ Type TCodePlay
 				CheckMenu arm64v8aenable
 			Case MENUJSENABLED
 				CheckMenu jsenable
+			Case MENUARMV7ENABLED
+				CheckMenu armv7enable
+			Case MENUARM64ENABLED
+				CheckMenu arm64enable
 		End Select
 	End Method
 	
@@ -6821,6 +6842,8 @@ Type TCodePlay
 		DisableMenu armeabiv7aenable
 		DisableMenu arm64v8aenable
 		DisableMenu jsenable
+		DisableMenu armv7enable
+		DisableMenu arm64enable
 
 		Select platformMenu
 			Case MENUWIN32ENABLED, MENULINUXENABLED
@@ -6833,6 +6856,11 @@ Type TCodePlay
 ?ppc
 				EnableMenu ppcenable
 ?
+			Case MENUIOSENABLED
+				EnableMenu x86enable
+				EnableMenu x64enable
+				EnableMenu armv7enable
+				EnableMenu arm64enable
 			Case MENURASPBERRYPIENABLED
 				EnableMenu armenable
 			Case MENUANDROIDENABLED
@@ -6866,6 +6894,10 @@ Type TCodePlay
 						UncheckMenu arm64v8aenable
 					Case MENUJSENABLED
 						UncheckMenu jsenable
+					Case MENUARMV7ENABLED
+						UncheckMenu armv7enable
+					Case MENUARM64ENABLED
+						UncheckMenu arm64enable
 				End Select
 			End If
 			architectureenabled[i] = False
@@ -6891,6 +6923,14 @@ Type TCodePlay
 				CheckMenu ppcenable
 				architectureenabled[MENUPPCENABLED - ARCHITECTUREOFFSET] = True
 ?
+			Case MENUIOSENABLED
+?x86
+				CheckMenu x86enable
+				architectureenabled[MENUX86ENABLED - ARCHITECTUREOFFSET] = True
+?x64
+				CheckMenu x64enable
+				architectureenabled[MENUX64ENABLED - ARCHITECTUREOFFSET] = True
+?
 			Case MENURASPBERRYPIENABLED
 				CheckMenu armenable
 				architectureenabled[MENUARMENABLED - ARCHITECTUREOFFSET] = True
@@ -6913,6 +6953,8 @@ Type TCodePlay
 						Return "linux"
 					Case MENUMACOSXENABLED
 						Return "macos"
+					Case MENUIOSENABLED
+						Return "ios"
 					Case MENURASPBERRYPIENABLED
 						Return "raspberrypi"
 					Case MENUANDROIDENABLED
@@ -6946,6 +6988,10 @@ Type TCodePlay
 						Return "arm64v8a"
 					Case MENUJSENABLED
 						Return "js"
+					Case MENUARMV7ENABLED
+						Return "armv7"
+					Case MENUARM64ENABLED
+						Return "arm64"
 				End Select
 			End If
 		Next
