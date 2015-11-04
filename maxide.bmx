@@ -183,6 +183,7 @@ Const MENUCLOSEOTHERS=60
 Const MENUTHREADEDENABLED=61
 
 Const MENUVERBOSEENABLED=62
+Const MENUQUICKSCANENABLED=63
 
 
 Const MENUPLATFORM=80
@@ -5029,7 +5030,7 @@ Type TOpenCode Extends TToolPanel
 		Return True
 	End Method
 
-	Method BuildSource(quick,debug,threaded,gui,run, verbose, platform:String = Null, architecture:String = Null)
+	Method BuildSource(quick,debug,threaded,gui,run, verbose, quickscan, platform:String = Null, architecture:String = Null)
 		Local cmd$,out$,arg$
 		If isbmx Or isc Or iscpp
 			cmd$=quote(host.bmkpath)
@@ -5040,6 +5041,7 @@ Type TOpenCode Extends TToolPanel
 			If gui cmd$:+" -t gui"
 			If Not quick cmd$:+" -a"
 			If verbose cmd :+ " -v"
+			If quickscan cmd :+ " -quick"
 
 			If platform cmd :+ " -l " + platform
 			If architecture cmd :+ " -g " + architecture
@@ -5149,9 +5151,9 @@ Type TOpenCode Extends TToolPanel
 			Case TOOLREPLACE
 				Return FindReplace(String(argument))	
 			Case TOOLBUILD
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False, host.verboseenabled, host.GetPlatform(), host.GetArchitecture()
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False, host.verboseenabled, host.quickscanenabled, host.GetPlatform(), host.GetArchitecture()
 			Case TOOLRUN
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True, host.verboseenabled, host.GetPlatform(), host.GetArchitecture()
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True, host.verboseenabled, host.quickscanenabled, host.GetPlatform(), host.GetArchitecture()
 			Case TOOLLOCK
 				SetLocked True
 			Case TOOLUNLOCK
@@ -5346,6 +5348,7 @@ Type TCodePlay
 	Field threadedenable:TGadget,threadedenabled
 	Field guienable:TGadget,guienabled		'menu,state
 	Field verboseenable:TGadget,verboseenabled		'menu,state
+	Field quickscanenable:TGadget,quickscanenabled		'menu,state
 	Field quickhelp:TQuickHelp
 	Field running
 	Field recentmenu:TGadget
@@ -5495,6 +5498,7 @@ Type TCodePlay
 		threadedenabled=False
 		guienabled=True
 		verboseenabled=False
+		quickscanenabled=True
 		For Local i:Int = 0 Until platformenabled.length
 			platformenabled[i] = False
 		Next
@@ -5551,6 +5555,8 @@ Type TCodePlay
 					guienabled=Int(b$)
 				Case "prg_verbose"
 					verboseenabled=Int(b$)
+				Case "prg_quickscan"
+					quickscanenabled=Int(b$)
 				Case "prg_platform"
 					For Local i:Int = 0 Until platformenabled.length
 						platformenabled[i] = False
@@ -5607,6 +5613,7 @@ Type TCodePlay
 		stream.WriteLine "prg_threaded="+threadedenabled
 		stream.WriteLine "prg_gui="+guienabled
 		stream.WriteLine "prg_verbose="+verboseenabled
+		stream.WriteLine "prg_quickscan="+quickscanenabled
 		For Local i:Int = 0 Until platformenabled.length
 			If platformenabled[i] Then
 				stream.WriteLine "prg_platform=" + i
@@ -5817,6 +5824,7 @@ Type TCodePlay
 		If buildall cmd$:+"-a "
 		If threadedenabled cmd:+"-h "
 		If verboseenabled cmd:+"-v "
+		If quickscanenabled cmd:+"-quick "
 		Local platform:String = GetPlatform()
 		Local architecture:String = GetArchitecture()
 		If platform cmd :+ "-l " + platform + " "
@@ -6365,6 +6373,7 @@ Type TCodePlay
 		EndIf
 		guienable=CreateMenu("{{menu_program_buildoptions_guiapp}}",MENUGUIENABLED,buildoptions)
 		verboseenable=CreateMenu("{{menu_program_buildoptions_verbose}}",MENUVERBOSEENABLED,buildoptions)
+		quickscanenable=CreateMenu("{{menu_program_buildoptions_quickscan}}",MENUQUICKSCANENABLED,buildoptions)
 
 		platform=CreateMenu("{{menu_program_platform}}",0,program)
 ?Not raspberrypi
@@ -6416,6 +6425,7 @@ Type TCodePlay
 		If threadedenabled CheckMenu threadedenable
 		If guienabled CheckMenu guienable
 		If verboseenabled CheckMenu verboseenable
+		If quickscanenabled CheckMenu quickscanenable
 
 		Local defaultArch:Int = -1
 		For Local i:Int = 0 Until architectureenabled.length
@@ -6650,6 +6660,16 @@ Type TCodePlay
 				Else
 					verboseenabled=True
 					CheckMenu verboseenable
+				EndIf
+				UpdateWindowMenu window
+
+			Case MENUQUICKSCANENABLED
+				If quickscanenabled
+					quickscanenabled=False
+					UncheckMenu quickscanenable							
+				Else
+					quickscanenabled=True
+					CheckMenu quickscanenable
 				EndIf
 				UpdateWindowMenu window
 
