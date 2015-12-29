@@ -38,8 +38,10 @@ Import bah.maxguitextareascintilla
 ?
 Import MaxGUI.ProxyGadgets
 
-?Win32
+?Win32x86
 Import "maxicons.o"
+?Win32x64
+Import "maxicons64.o"
 ?
 
 Import brl.eventqueue
@@ -184,6 +186,7 @@ Const MENUTHREADEDENABLED=61
 
 Const MENUVERBOSEENABLED=62
 Const MENUQUICKSCANENABLED=63
+Const MENUUNIVERSALENABLED=64
 
 
 Const MENUPLATFORM=80
@@ -5030,7 +5033,7 @@ Type TOpenCode Extends TToolPanel
 		Return True
 	End Method
 
-	Method BuildSource(quick,debug,threaded,gui,run, verbose, quickscan, platform:String = Null, architecture:String = Null)
+	Method BuildSource(quick,debug,threaded,gui,run, verbose, quickscan, universal, platform:String = Null, architecture:String = Null)
 		Local cmd$,out$,arg$
 		If isbmx Or isc Or iscpp
 			cmd$=quote(host.bmkpath)
@@ -5042,6 +5045,7 @@ Type TOpenCode Extends TToolPanel
 			If Not quick cmd$:+" -a"
 			If verbose cmd :+ " -v"
 			If quickscan cmd :+ " -quick"
+			If universal cmd :+ " -i"
 
 			If platform cmd :+ " -l " + platform
 			If architecture cmd :+ " -g " + architecture
@@ -5151,9 +5155,9 @@ Type TOpenCode Extends TToolPanel
 			Case TOOLREPLACE
 				Return FindReplace(String(argument))	
 			Case TOOLBUILD
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False, host.verboseenabled, host.quickscanenabled, host.GetPlatform(), host.GetArchitecture()
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.GetPlatform(), host.GetArchitecture()
 			Case TOOLRUN
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True, host.verboseenabled, host.quickscanenabled, host.GetPlatform(), host.GetArchitecture()
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.GetPlatform(), host.GetArchitecture()
 			Case TOOLLOCK
 				SetLocked True
 			Case TOOLUNLOCK
@@ -5349,6 +5353,7 @@ Type TCodePlay
 	Field guienable:TGadget,guienabled		'menu,state
 	Field verboseenable:TGadget,verboseenabled		'menu,state
 	Field quickscanenable:TGadget,quickscanenabled		'menu,state
+	Field universalenable:TGadget,universalenabled		'menu,state
 	Field quickhelp:TQuickHelp
 	Field running
 	Field recentmenu:TGadget
@@ -5499,6 +5504,7 @@ Type TCodePlay
 		guienabled=True
 		verboseenabled=False
 		quickscanenabled=True
+		universalenabled=False
 		For Local i:Int = 0 Until platformenabled.length
 			platformenabled[i] = False
 		Next
@@ -5557,6 +5563,8 @@ Type TCodePlay
 					verboseenabled=Int(b$)
 				Case "prg_quickscan"
 					quickscanenabled=Int(b$)
+				Case "prg_universal"
+					universalenabled=Int(b$)
 				Case "prg_platform"
 					For Local i:Int = 0 Until platformenabled.length
 						platformenabled[i] = False
@@ -5614,6 +5622,7 @@ Type TCodePlay
 		stream.WriteLine "prg_gui="+guienabled
 		stream.WriteLine "prg_verbose="+verboseenabled
 		stream.WriteLine "prg_quickscan="+quickscanenabled
+		stream.WriteLine "prg_universal="+universalenabled
 		For Local i:Int = 0 Until platformenabled.length
 			If platformenabled[i] Then
 				stream.WriteLine "prg_platform=" + i
@@ -5825,6 +5834,7 @@ Type TCodePlay
 		If threadedenabled cmd:+"-h "
 		If verboseenabled cmd:+"-v "
 		If quickscanenabled cmd:+"-quick "
+		If universalenabled cmd:+"-i "
 		Local platform:String = GetPlatform()
 		Local architecture:String = GetArchitecture()
 		If platform cmd :+ "-l " + platform + " "
@@ -6374,7 +6384,9 @@ Type TCodePlay
 		guienable=CreateMenu("{{menu_program_buildoptions_guiapp}}",MENUGUIENABLED,buildoptions)
 		verboseenable=CreateMenu("{{menu_program_buildoptions_verbose}}",MENUVERBOSEENABLED,buildoptions)
 		quickscanenable=CreateMenu("{{menu_program_buildoptions_quickscan}}",MENUQUICKSCANENABLED,buildoptions)
-
+?macos
+		universalenable=CreateMenu("{{menu_program_buildoptions_universal}}",MENUUNIVERSALENABLED,buildoptions)
+?
 		platform=CreateMenu("{{menu_program_platform}}",0,program)
 ?Not raspberrypi
 		win32enable=CreateMenu("{{menu_program_platform_win32}}",MENUWIN32ENABLED,platform)
@@ -6426,6 +6438,7 @@ Type TCodePlay
 		If guienabled CheckMenu guienable
 		If verboseenabled CheckMenu verboseenable
 		If quickscanenabled CheckMenu quickscanenable
+		If universalenabled CheckMenu universalenable
 
 		Local defaultArch:Int = -1
 		For Local i:Int = 0 Until architectureenabled.length
@@ -6670,6 +6683,16 @@ Type TCodePlay
 				Else
 					quickscanenabled=True
 					CheckMenu quickscanenable
+				EndIf
+				UpdateWindowMenu window
+
+			Case MENUUNIVERSALENABLED
+				If universalenabled
+					universalenabled=False
+					UncheckMenu universalenable							
+				Else
+					universalenabled=True
+					CheckMenu universalenable
 				EndIf
 				UpdateWindowMenu window
 
