@@ -562,6 +562,9 @@ Type TAboutRequester Extends TRequester
 		
 		strHeadings:+["{{about_label_bccver}}:"]
 		strValues:+[BCC_VERSION]
+
+		strHeadings:+["{{about_label_bmkver}}:"]
+		strValues:+[GetBMK()]
 		
 		strHeadings:+[""]
 		strValues:+[""]
@@ -575,7 +578,10 @@ Type TAboutRequester Extends TRequester
 		
 		?Win32
 		strHeadings:+["{{about_label_mingwpath}}:"]
-		If getenv_("MINGW") Then
+		' check For Local mingw32 dir First
+		If FileType(BlitzMaxPath() + "/MinGW32") = FILETYPE_DIR Then
+			strValues:+[(BlitzMaxPath() + "/MinGW32").Replace("/","\")]
+		Else If getenv_("MINGW") Then
 			strValues:+[getenv_("MINGW")]
 		Else
 			strValues:+[LocalizeString("{{about_error_unavailable}}")]
@@ -592,7 +598,7 @@ Type TAboutRequester Extends TRequester
 		
 		strHeadings:+["{{about_label_gccver}}:"]
 		strValues:+[GetGCC()]
-		
+
 		strHeadings:+["{{about_label_gplusplusver}}:"]
 		strValues:+[GetGpp()]
 		
@@ -624,6 +630,7 @@ Type TAboutRequester Extends TRequester
 				EndIf
 			Until (Not process.status()) Or (MilliSecs() > tmpTimeout)
 			process.Close()
+
 			Return version.Trim().Replace("~r","")
 		EndIf
 		
@@ -638,18 +645,39 @@ Type TAboutRequester Extends TRequester
 		?
 	EndMethod
 	
+	Method GetBMK$()
+		Local tmpSections$[] = GetProcessOutput(BlitzMaxPath()+"/bin/bmk", "-v").Split("~n")
+		Return tmpSections[tmpSections.length-1]
+	EndMethod
+	
 	Method GetGCC$()
 		?Win32
-		If Not getenv_("MinGW") Then Return LocalizeString("{{about_error_notapplicable}}")
+		Local gccPath:String = BlitzMaxPath() + "/MinGW32"
+		If Not FileType(gccPath) Then
+			gccPath = getenv_("MinGW")
+			If Not gccPath Then Return LocalizeString("{{about_error_notapplicable}}")
+		End If
+		gccPath :+ "/bin/gcc"
+		gccPath = gccPath.Replace("/", "\")
+		? Not win32
+		Local gccPath:String = "gcc"
 		?
-		Return GetProcessOutput("gcc", "-dumpversion").Split("~n")[0]
+		Return GetProcessOutput(gccPath, "-dumpversion").Split("~n")[0]
 	EndMethod
 	
 	Method GetGpp$()
 		?Win32
-		If Not getenv_("MinGW") Then Return LocalizeString("{{about_error_notapplicable}}")
+		Local gppPath:String = BlitzMaxPath() + "/MinGW32"
+		If Not FileType(gppPath) Then
+			gppPath = getenv_("MinGW")
+			If Not gppPath Then Return LocalizeString("{{about_error_notapplicable}}")
+		End If
+		gppPath:+ "/bin/g++"
+		gppPath = gppPath.Replace("/", "\")
+		? Not win32
+		Local gppPath:String = "g++"
 		?
-		Return GetProcessOutput("g++", "-dumpversion").Split("~n")[0]
+		Return GetProcessOutput(gppPath, "-dumpversion").Split("~n")[0]
 	EndMethod
 	
 	Method PopulateColumns( strHeadings$[], strValues$[] )
@@ -692,7 +720,7 @@ Type TAboutRequester Extends TRequester
 	Function Create:TAboutRequester(host:TCodePlay)
 		
 		Local abt:TAboutRequester = New TAboutRequester
-		abt.initrequester(host,"{{about_window_title}}",420,255,STYLE_CANCEL|STYLE_DIVIDER|STYLE_MODAL)
+		abt.initrequester(host,"{{about_window_title}}",420,277,STYLE_CANCEL|STYLE_DIVIDER|STYLE_MODAL)
 		
 		Local win:TGadget = abt.window, w = ClientWidth(abt.window)-12, h = ClientHeight(abt.window)
 		
@@ -706,11 +734,18 @@ Type TAboutRequester Extends TRequester
 		SetGadgetPixmap abt.pnlLogo, pixLogo, PANELPIXMAP_CENTER
 		
 		Local y = 12
-		
-		abt.lblTitle = CreateLabel("MaxIDE "+IDE_VERSION,6,y,w,18,win,LABEL_LEFT)
+		Local arch:String
+?x86
+		arch = "x86"
+?x64
+		arch = "x64"
+?arm
+		arch = "ARM"
+?
+		abt.lblTitle = CreateLabel("MaxIDE "+IDE_VERSION + " (" + arch + ")",6,y,w,20,win,LABEL_LEFT)
 		SetGadgetFont abt.lblTitle, LookupGuiFont( GUIFONT_SYSTEM, 12, FONT_BOLD )
 		SetGadgetLayout abt.lblTitle, EDGE_ALIGNED, EDGE_ALIGNED, EDGE_ALIGNED, EDGE_CENTERED
-		y:+19
+		y:+21
 		
 		abt.lblSubtitle = CreateLabel("Copyright Blitz Research Ltd.",6,y,w,22,win,LABEL_LEFT)
 		SetGadgetFont abt.lblSubtitle, LookupGuiFont( GUIFONT_SYSTEM, 10, FONT_ITALIC )
@@ -724,7 +759,7 @@ Type TAboutRequester Extends TRequester
 		
 		Local tmpGadget:TGadget
 		
-		For y = y Until (255-21) Step 22
+		For y = y Until (277-21) Step 22
 			
 			tmpGadget = CreateLabel("",6,y,135,22,win,LABEL_LEFT)
 			SetGadgetLayout( tmpGadget, EDGE_ALIGNED, EDGE_RELATIVE, EDGE_ALIGNED, EDGE_CENTERED )
@@ -6462,11 +6497,15 @@ Type TCodePlay
 		'UpdateArchitectureMenus()
 		
 ?Win32		
-		Local mingw$=getenv_("MINGW")
+		Local mingw$=BlitzMaxPath() + "/MinGW32"
+		If Not FileType(mingw) Then
+			mingw = getenv_("MINGW")
+		End If
 		If Not mingw
 			DisableMenu buildmods
 			DisableMenu buildallmods
 		EndIf
+
 ?		
 '		If is_demo
 '			DisableMenu syncmods
