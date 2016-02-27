@@ -210,6 +210,8 @@ Const MENUJSENABLED=98
 Const MENUARMV7ENABLED=99
 Const MENUARM64ENABLED=100
 
+Const MENUAPPSTUB=160
+
 Const MENURECENT=256
 
 Const TB_NEW=0
@@ -1112,7 +1114,7 @@ Const MATCHING=5
 
 Type TOptionsRequester Extends TPanelRequester
 ' panels
-	Field	optionspanel:TGadget,editorpanel:TGadget,toolpanel:TGadget
+	Field	optionspanel:TGadget,editorpanel:TGadget,toolpanel:TGadget,appstubpanel:TGadget
 ' settings
 	Field	showtoolbar,restoreopenfiles,autocapitalize,syntaxhighlight,autobackup,autoindent,hideoutput
 	Field	bracketmatching, externalhelp,systemkeys,sortcode
@@ -1132,6 +1134,11 @@ Type TOptionsRequester Extends TPanelRequester
 	Field	navstyle:TGadgetStyle
 	Field	dirty
 	Field	undo:TBank
+	Field appstublist:TGadget
+	Field appstubs:String[]
+	Field appstubedit:TGadget
+	Field addappstub:TGadget
+	Field delappstub:TGadget
 	
 	Method Show()
 		RefreshGadgets()
@@ -1173,6 +1180,8 @@ Type TOptionsRequester Extends TPanelRequester
 		styles[MATCHING].set( $ff4040,TEXTFORMAT_BOLD )
 		outputstyle.set(0,-1,GUIFONT_MONOSPACED)
 		navstyle.set(0,-1,GUIFONT_SYSTEM)
+		appstubs = ["brl.appstub"]
+		
 		RefreshGadgets
 	End Method
 
@@ -1202,10 +1211,14 @@ Type TOptionsRequester Extends TPanelRequester
 		stream.WriteLine "external_help="+externalhelp
 		stream.WriteLine "system_keys="+systemkeys
 		stream.WriteLine "sort_code="+sortcode
+		For Local i:Int = 1 Until appstubs.length
+			stream.WriteLine "appstub_" + i + "="+appstubs[i]
+		Next
 	End Method
 
 	Method Read(stream:TStream)
 		Local	f$,p,a$,b$,t
+		appstubs = ["brl.appstub"]
 		While Not stream.Eof()
 			f$=stream.ReadLine()
 			If f$="" Or (f$[..1]="[" And f$<>"[Options]") Exit
@@ -1248,6 +1261,9 @@ Type TOptionsRequester Extends TPanelRequester
 					Catch excn:Object
 					EndTry
 			End Select
+			If a.StartsWith("appstub_") Then
+				appstubs :+ [b]
+			End If
 		Wend		
 		RefreshGadgets
 	End Method
@@ -1300,6 +1316,13 @@ Type TOptionsRequester Extends TPanelRequester
 		outputstyle.Refresh
 		navstyle.Refresh
 		dirty=True
+		
+		ClearGadgetItems appstublist
+		For Local appstub:String = EachIn appstubs
+			AddGadgetItem appstublist,appstub
+		Next
+		DisableGadget addappstub
+		DisableGadget delappstub
 	End Method
 
 	Method Poll()
@@ -1331,6 +1354,8 @@ Type TOptionsRequester Extends TPanelRequester
 								host.RefreshAll
 							Case 2
 								host.Restart
+							Case 3
+								host.RefreshAppStubs
 						End Select
 						dirty=False
 						SnapShot()
@@ -1367,9 +1392,42 @@ Type TOptionsRequester Extends TPanelRequester
 							SetLocalizationLanguage defaultLanguage
 						EndIf
 						host.RefreshMenu()
+					Case addappstub
+						If GadgetText(appstubedit) Then
+							appstubs :+ [GadgetText(appstubedit).ToLower()]
+							SetGadgetText appstubedit, ""
+						End If
+						refresh=True
+						dirty=3
+					Case delappstub
+						Local index:Int = SelectedGadgetItem(appstublist)
+						If index > 0 Then
+							If index < appstubs.length
+								appstubs = appstubs[..index] + appstubs[index+1..]
+							Else
+								appstubs = appstubs[..index]
+							End If
+							refresh=True
+							dirty=3
+						End If
+					Case appstubedit
+						If GadgetText(appstubedit) Then
+							EnableGadget addappstub
+						Else
+							DisableGadget addappstub
+						End If
 					Default
 						processed = 0
 				EndSelect
+			Case EVENT_GADGETSELECT
+				Select EventSource()
+					Case appstublist
+						If SelectedGadgetItem(appstublist) > 0 Then
+							EnableGadget delappstub
+						Else
+							DisableGadget delappstub
+						End If
+				End Select
 			Case EVENT_MOUSEDOWN
 				Select EventSource()
 					Case editpanel
@@ -1394,6 +1452,7 @@ Type TOptionsRequester Extends TPanelRequester
 		optionspanel=AddPanel("{{options_optionstab}}")
 		editorpanel=AddPanel("{{options_editortab}}")
 		toolpanel=AddPanel("{{options_toolstab}}")
+		appstubpanel=AddPanel("{{options_appstubtab}}")
 		
 		SetGadgetShape( tabber, GadgetX(tabber), GadgetY(tabber)+32, GadgetWidth(tabber), GadgetHeight(tabber)-32 )
 		
@@ -1439,6 +1498,17 @@ Type TOptionsRequester Extends TPanelRequester
 		w=toolpanel
 		outputstyle=TGadgetStyle.Create("{{options_tools_label_output}}: ",6,6,w)
 		navstyle=TGadgetStyle.Create("{{options_tools_label_navbar}}: ",6,66,w)
+
+		w=appstubpanel
+		appstublist=CreateListBox(6,6,ClientWidth(w)-12,ClientHeight(w)-80,w)
+		appstubedit=CreateTextField(6,ClientHeight(w)-66,ClientWidth(w)-12,21,w)
+		addappstub=CreateButton("{{options_appstub_btn_add}}",6,ClientHeight(w)-40,140,26,w,BUTTON_PUSH)
+		delappstub=CreateButton("{{options_appstub_btn_del}}",ClientWidth(w)-146,ClientHeight(w)-40,140,26,w,BUTTON_PUSH)
+		appstubs = ["brl.appstub"]
+		AddGadgetItem appstublist,appstubs[0]
+
+		DisableGadget addappstub
+		DisableGadget delappstub
 
 		SetDefaults()
 		SetPanel optionspanel
@@ -5068,7 +5138,7 @@ Type TOpenCode Extends TToolPanel
 		Return True
 	End Method
 
-	Method BuildSource(quick,debug,threaded,gui,run, verbose, quickscan, universal, platform:String = Null, architecture:String = Null)
+	Method BuildSource(quick,debug,threaded,gui,run, verbose, quickscan, universal, platform:String = Null, architecture:String = Null, appstub:String = Null)
 		Local cmd$,out$,arg$
 		If isbmx Or isc Or iscpp
 			cmd$=quote(host.bmkpath)
@@ -5081,6 +5151,7 @@ Type TOpenCode Extends TToolPanel
 			If verbose cmd :+ " -v"
 			If quickscan cmd :+ " -quick"
 			If universal cmd :+ " -i"
+			If appstub And appstub <> "brl.appstub" cmd :+ " -b " + appstub
 
 			If platform cmd :+ " -l " + platform
 			If architecture cmd :+ " -g " + architecture
@@ -5190,9 +5261,9 @@ Type TOpenCode Extends TToolPanel
 			Case TOOLREPLACE
 				Return FindReplace(String(argument))	
 			Case TOOLBUILD
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.GetPlatform(), host.GetArchitecture()
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.GetPlatform(), host.GetArchitecture(), host.selectedappstub
 			Case TOOLRUN
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.GetPlatform(), host.GetArchitecture()
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.GetPlatform(), host.GetArchitecture(), host.selectedappstub
 			Case TOOLLOCK
 				SetLocked True
 			Case TOOLUNLOCK
@@ -5400,6 +5471,7 @@ Type TCodePlay
 	Field winsize:TRect=New TRect
 	Field winmax,tooly,splitpos,debugview,navtab
 	Field progress,splitorientation
+	Field selectedappstub:String
 
 	Field win32enable:TGadget	'menu
 	Field linuxenable:TGadget	'menu
@@ -5425,6 +5497,10 @@ Type TCodePlay
 	
 	Field architectureenabled:Int[10]
 	Const ARCHITECTUREOFFSET:Int = 91
+	
+	Const APPSTUBOFFSET:Int = 161
+	Field appstubmenus:TGadget[]
+	Field appstubmenu:TGadget
 
 ?MacOS	
 	Method RanlibMods()
@@ -5558,6 +5634,7 @@ Type TCodePlay
 ?
 
 		splitpos=200;splitorientation = SPLIT_VERTICAL
+		selectedappstub="brl.appstub"
 ' read ini
 		stream=ReadFile(bmxpath+"/cfg/ide.ini")
 		If Not stream
@@ -5632,6 +5709,8 @@ Type TCodePlay
 					projlist.AddLast projdata
 				Case "proj_data"
 					If projdata projdata.AddLast b
+				Case "appstub"
+					selectedappstub = b
 				'Case "sync_state"
 					'syncmodsreq.FromString b$
 			End Select
@@ -5673,10 +5752,17 @@ Type TCodePlay
 		stream.WriteLine "split_position="+SplitterPosition(split)
 		stream.WriteLine "split_orientation="+SplitterOrientation(split)
 		stream.WriteLine "cmd_line="+cmdline
+		If selectedappstub Then
+			stream.WriteLine "appstub="+selectedappstub
+		End If
 		'stream.WriteLine "sync_state="+syncmodsreq.ToString()
 		If lockedpanel stream.WriteLine "prg_locked="+lockedpanel.path
+		Local n:Int
 		For f$=EachIn recentfiles
 			stream.WriteLine "file_recent="+f$
+			' only last 20
+			If n=20 Exit
+			n:+1
 		Next
 		For Local panel:TToolPanel = EachIn panels
 			f$=panel.path
@@ -5856,6 +5942,31 @@ Type TCodePlay
 			n:+1
 			If n=16 Exit
 		Next
+	End Method
+	
+	Method RefreshAppStubs()
+		For Local m:TGadget = EachIn appstubmenus
+			FreeMenu m
+		Next
+		Local n:Int = options.appstubs.length
+		appstubmenus=New TGadget[n]
+		n=0
+		Local checked:Int
+		For Local a:String = EachIn options.appstubs
+			appstubmenus[n]=CreateMenu(a,APPSTUBOFFSET+n,appstubmenu)
+			If selectedappstub = a Then
+				CheckMenu appstubmenus[n]
+				checked = True
+			Else
+				UncheckMenu appstubmenus[n]
+			End If
+			n:+1
+		Next
+		' didn't match any app stubs. choose default (brl.appstub)
+		If Not checked Then
+			selectedappstub = options.appstubs[0]
+			CheckMenu appstubmenus[0]
+		End If
 	End Method
 	
 	Method BuildModules(buildall)
@@ -6449,6 +6560,8 @@ Type TCodePlay
 		jsenable=CreateMenu("{{menu_program_arch_js}}",MENUJSENABLED,architecture)
 		armv7enable=CreateMenu("{{menu_program_arch_armv7}}",MENUARMV7ENABLED,architecture)
 		arm64enable=CreateMenu("{{menu_program_arch_arm64}}",MENUARM64ENABLED,architecture)
+
+		appstubmenu=CreateMenu("{{menu_program_appstub}}",0,program)
 		
 		CreateMenu "",0,program
 		CreateMenu "{{menu_program_lockbuildfile}}",MENULOCKBUILD,program
@@ -6512,6 +6625,7 @@ Type TCodePlay
 '		EndIf
 		
 		RefreshRecentFiles
+		RefreshAppStubs
 		UpdateWindowMenu window
 	End Method
 
@@ -6570,6 +6684,8 @@ Type TCodePlay
 		Next
 ' refresh navbar
 		navbar.invoke TOOLREFRESH
+' refresh appstub menus
+		RefreshAppStubs
 	End Method
 
 	Method SnapshotWindow()
@@ -6800,10 +6916,16 @@ Type TCodePlay
 				navbar.invoke TOOLNEWVIEW
 				
 		End Select
-		
+
 		If menu>=MENURECENT
 			Local f:String = String(recentfiles.ValueAtIndex(menu-MENURECENT))
 			If f$ OpenSource f$
+		Else If menu >= APPSTUBOFFSET
+			Local index:Int = menu - APPSTUBOFFSET
+			If index < options.appstubs.length Then
+				selectedappstub = options.appstubs[index]
+				RefreshAppStubs
+			End If
 		EndIf
 	End Method
 	
