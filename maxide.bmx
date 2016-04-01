@@ -188,6 +188,7 @@ Const MENUVERBOSEENABLED=62
 Const MENUQUICKSCANENABLED=63
 Const MENUUNIVERSALENABLED=64
 Const MENUWARNOVERENABLED=65
+Const MENUGDBDEBUGENABLED=66
 
 
 Const MENUPLATFORM=80
@@ -5139,7 +5140,7 @@ Type TOpenCode Extends TToolPanel
 		Return True
 	End Method
 
-	Method BuildSource(quick,debug,threaded,gui,run, verbose, quickscan, universal, warnover, platform:String = Null, architecture:String = Null, appstub:String = Null)
+	Method BuildSource(quick,debug,threaded,gui,run, verbose, quickscan, universal, warnover, gdbdebug, platform:String = Null, architecture:String = Null, appstub:String = Null)
 		Local cmd$,out$,arg$
 		If isbmx Or isc Or iscpp
 			cmd$=quote(host.bmkpath)
@@ -5153,6 +5154,7 @@ Type TOpenCode Extends TToolPanel
 			If quickscan cmd :+ " -quick"
 			If universal cmd :+ " -i"
 			If warnover cmd :+ " -w"
+			If gdbdebug cmd :+ " -gdb"
 			If appstub And appstub <> "brl.appstub" cmd :+ " -b " + appstub
 
 			If platform cmd :+ " -l " + platform
@@ -5263,9 +5265,9 @@ Type TOpenCode Extends TToolPanel
 			Case TOOLREPLACE
 				Return FindReplace(String(argument))	
 			Case TOOLBUILD
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.warnoverenabled, host.GetPlatform(), host.GetArchitecture(), host.selectedappstub
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.warnoverenabled, host.gdbdebugenabled, host.GetPlatform(), host.GetArchitecture(), host.selectedappstub
 			Case TOOLRUN
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.warnoverenabled, host.GetPlatform(), host.GetArchitecture(), host.selectedappstub
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.warnoverenabled, host.gdbdebugenabled, host.GetPlatform(), host.GetArchitecture(), host.selectedappstub
 			Case TOOLLOCK
 				SetLocked True
 			Case TOOLUNLOCK
@@ -5463,6 +5465,7 @@ Type TCodePlay
 	Field quickscanenable:TGadget,quickscanenabled		'menu,state
 	Field universalenable:TGadget,universalenabled		'menu,state
 	Field warnoverenable:TGadget,warnoverenabled		'menu,state
+	Field gdbdebugenable:TGadget,gdbdebugenabled		'menu,state
 	Field quickhelp:TQuickHelp
 	Field running
 	Field recentmenu:TGadget
@@ -5619,7 +5622,8 @@ Type TCodePlay
 		verboseenabled=False
 		quickscanenabled=True
 		universalenabled=False
-		warnoverenabled=False
+		warnoverenabled=True
+		gdbdebugenabled=False
 		For Local i:Int = 0 Until platformenabled.length
 			platformenabled[i] = False
 		Next
@@ -5683,6 +5687,8 @@ Type TCodePlay
 					universalenabled=Int(b$)
 				Case "prg_warnover"
 					warnoverenabled=Int(b$)
+				Case "prg_gdbdebug"
+					gdbdebugenabled=Int(b$)
 				Case "prg_platform"
 					For Local i:Int = 0 Until platformenabled.length
 						platformenabled[i] = False
@@ -5744,6 +5750,7 @@ Type TCodePlay
 		stream.WriteLine "prg_quickscan="+quickscanenabled
 		stream.WriteLine "prg_universal="+universalenabled
 		stream.WriteLine "prg_warnover="+warnoverenabled
+		stream.WriteLine "prg_gdbdebug="+gdbdebugenabled
 		For Local i:Int = 0 Until platformenabled.length
 			If platformenabled[i] Then
 				stream.WriteLine "prg_platform=" + i
@@ -5989,6 +5996,7 @@ Type TCodePlay
 		If quickscanenabled cmd:+"-quick "
 		If universalenabled cmd:+"-i "
 		If warnoverenabled cmd:+"-w "
+		If gdbdebugenabled cmd:+"-gdb "
 		Local platform:String = GetPlatform()
 		Local architecture:String = GetArchitecture()
 		If platform cmd :+ "-l " + platform + " "
@@ -6439,7 +6447,7 @@ Type TCodePlay
 
 	Method InitMenu()
 		Local menu:TGadget,file:TGadget,edit:TGadget,program:TGadget,tools:TGadget
-		Local help:TGadget,buildoptions:TGadget
+		Local help:TGadget,buildoptions:TGadget,devoptions:TGadget
 		Local buildmods:TGadget,buildallmods:TGadget,syncmods:TGadget,docmods:TGadget
 		Local platform:TGadget,architecture:TGadget
 
@@ -6536,12 +6544,15 @@ Type TCodePlay
 				threadedenable=CreateMenu("{{menu_program_buildoptions_threaded}}",MENUTHREADEDENABLED,buildoptions)
 		EndIf
 		guienable=CreateMenu("{{menu_program_buildoptions_guiapp}}",MENUGUIENABLED,buildoptions)
-		verboseenable=CreateMenu("{{menu_program_buildoptions_verbose}}",MENUVERBOSEENABLED,buildoptions)
 		quickscanenable=CreateMenu("{{menu_program_buildoptions_quickscan}}",MENUQUICKSCANENABLED,buildoptions)
 ?macos
 		universalenable=CreateMenu("{{menu_program_buildoptions_universal}}",MENUUNIVERSALENABLED,buildoptions)
 ?
 		warnoverenable=CreateMenu("{{menu_program_buildoptions_warnover}}",MENUWARNOVERENABLED,buildoptions)
+		devoptions=CreateMenu("{{menu_program_buildoptions_dev}}",0,buildoptions)
+		verboseenable=CreateMenu("{{menu_program_buildoptions_verbose}}",MENUVERBOSEENABLED,devoptions)
+		gdbdebugenable=CreateMenu("{{menu_program_buildoptions_gdbdebug}}",MENUGDBDEBUGENABLED,devoptions)
+
 		platform=CreateMenu("{{menu_program_platform}}",0,program)
 ?Not raspberrypi
 		win32enable=CreateMenu("{{menu_program_platform_win32}}",MENUWIN32ENABLED,platform)
@@ -6597,6 +6608,7 @@ Type TCodePlay
 		If quickscanenabled CheckMenu quickscanenable
 		If universalenabled CheckMenu universalenable
 		If warnoverenabled CheckMenu warnoverenable
+		If gdbdebugenabled CheckMenu gdbdebugenable
 
 		Local defaultArch:Int = -1
 		For Local i:Int = 0 Until architectureenabled.length
@@ -6868,6 +6880,16 @@ Type TCodePlay
 				Else
 					warnoverenabled=True
 					CheckMenu warnoverenable
+				EndIf
+				UpdateWindowMenu window
+
+			Case MENUGDBDEBUGENABLED
+				If gdbdebugenabled
+					gdbdebugenabled=False
+					UncheckMenu gdbdebugenable							
+				Else
+					gdbdebugenabled=True
+					CheckMenu gdbdebugenable
 				EndIf
 				UpdateWindowMenu window
 
