@@ -988,6 +988,67 @@ Type TTextStyle
 	End Function
 End Type
 
+Type TCaretStyle
+
+	Field	label:TGadget,panel:TGadget,combo:TGadget
+	Field	color:TColor
+	Field	width:Int = 1
+	
+	Method Set(rgb,width)
+		color.set(rgb)
+		Self.width=width
+	End Method
+
+	Method ToString$()
+		Return ""+color.red+","+color.green+","+color.blue+","+width
+	End Method
+
+	Method FromString(s$)
+		Local	p,q,r
+		p=s.Find(",")+1;If Not p Return
+		q=s.Find(",",p)+1;If Not q Return
+		r=s.Find(",",q)+1;If Not r Return
+		color.red=Int(s[..p-1])
+		color.green=Int(s[p..q-1])
+		color.blue=Int(s[q..r-1])
+		width=Min(3,Max(1,Int(s[r..])))
+	End Method
+
+	Method Poll()
+		Select EventSource()
+			Case panel
+				If EventID()=EVENT_MOUSEDOWN
+					Return color.Request()
+				EndIf
+			Case combo
+				width=SelectedGadgetItem(combo) + 1
+				Return True
+			'Case underline
+			'	If EventData() Then flags:|TEXTFORMAT_UNDERLINE Else flags:&~TEXTFORMAT_UNDERLINE
+			'	Return True
+		End Select
+	End Method
+	
+	Method Refresh()
+		SetPanelColor panel,color.red,color.green,color.blue
+		SelectGadgetItem combo,width - 1
+	End Method
+
+	Function Create:TCaretStyle(name$,xpos,ypos,window:TGadget)
+		Local	s:TCaretStyle
+		s=New TCaretStyle
+		s.color=New TColor
+		s.label=CreateLabel(name,xpos,ypos+4,90,24,window)
+		s.panel=CreatePanel(xpos+94,ypos,24,24,window,PANEL_BORDER|PANEL_ACTIVE)
+		SetPanelColor s.panel,255,255,0
+		s.combo=CreateComboBox(xpos+122,ypos,96,24,window)
+		AddGadgetItem s.combo,"{{caretstyle_width_1}}",GADGETITEM_LOCALIZED
+		AddGadgetItem s.combo,"{{caretstyle_width_2}}",GADGETITEM_LOCALIZED
+		AddGadgetItem s.combo,"{{caretstyle_width_3}}",GADGETITEM_LOCALIZED
+		Return s
+	End Function
+End Type
+
 Type TGadgetStyle
 	
 	Global fntLibrary:TGUIFont[] =	[TGuiFont(Null), LookupGuiFont(GUIFONT_SYSTEM), LookupGuiFont(GUIFONT_MONOSPACED), ..
@@ -1141,6 +1202,7 @@ Type TOptionsRequester Extends TPanelRequester
 	Field appstubedit:TGadget
 	Field addappstub:TGadget
 	Field delappstub:TGadget
+	Field caretStyle:TCaretStyle
 	
 	Method Show()
 		RefreshGadgets()
@@ -1183,6 +1245,7 @@ Type TOptionsRequester Extends TPanelRequester
 		outputstyle.set(0,-1,GUIFONT_MONOSPACED)
 		navstyle.set(0,-1,GUIFONT_SYSTEM)
 		appstubs = ["brl.appstub"]
+		caretStyle.set($ffffff,1)
 		
 		RefreshGadgets
 	End Method
@@ -1216,6 +1279,7 @@ Type TOptionsRequester Extends TPanelRequester
 		For Local i:Int = 1 Until appstubs.length
 			stream.WriteLine "appstub_" + i + "="+appstubs[i]
 		Next
+		stream.WriteLine "caret_style="+caretstyle.ToString()
 	End Method
 
 	Method Read(stream:TStream)
@@ -1252,6 +1316,7 @@ Type TOptionsRequester Extends TPanelRequester
 				Case "external_help" externalhelp=t
 				Case "system_keys" systemkeys=t
 				Case "sort_code" sortcode=t
+				Case "caret_style" caretstyle.FromString(b)
 				Case "language"
 					Try
 						Local tmpLanguage:TMaxGUILanguage = LoadLanguage(host.FullPath(b))
@@ -1302,6 +1367,7 @@ Type TOptionsRequester Extends TPanelRequester
 		For Local i:Int = 0 Until styles.length
 			styles[i].Refresh
 		Next
+		caretstyle.Refresh
 		LockTextArea textarea
 		SetTextAreaColor textarea,editcolor.red,editcolor.green,editcolor.blue,True
 		SetGadgetFont textarea,editfont
@@ -1332,6 +1398,7 @@ Type TOptionsRequester Extends TPanelRequester
 		For Local i:Int = 0 Until styles.length
 			refresh:|styles[i].Poll()
 		Next
+		refresh:|caretstyle.Poll()
 		refresh:|outputstyle.Poll()
 		refresh:|navstyle.Poll()
 		Select EventID()
@@ -1447,7 +1514,7 @@ Type TOptionsRequester Extends TPanelRequester
 	
 	Method InitOptionsRequester(host:TCodePlay)		
 		Local	w:TGadget
-		InitPanelRequester(host,"{{options_window_title}}",380,430)
+		InitPanelRequester(host,"{{options_window_title}}",380,460)
 ' init values
 		editcolor=New TColor
 ' init gadgets
@@ -1494,7 +1561,9 @@ Type TOptionsRequester Extends TPanelRequester
 		styles[NUMBER]=TTextStyle.Create("{{options_editor_label_numbers}}:",6,186,w)
 		styles[MATCHING]=TTextStyle.Create("{{options_editor_label_matchings}}:",6,216,w)
 		
-		textarea=CreateTextArea(6,250,ClientWidth(w)-12,ClientHeight(w)-256,w,TEXTAREA_READONLY)
+		caretstyle = TCaretStyle.Create("{{options_editor_label_caret}}:",6,250,w)
+		
+		textarea=CreateTextArea(6,280,ClientWidth(w)-12,ClientHeight(w)-256,w,TEXTAREA_READONLY)
 		SetGadgetText textarea,"'Sample Code~n~nresult = ((2.0 * 4) + 1)~nPrint( ~qResult: ~q + result )~n"
 		
 		w=toolpanel
@@ -4391,6 +4460,9 @@ Type TOpenCode Extends TToolPanel
 		SetTextAreaColor textarea,rgb.red,rgb.green,rgb.blue,True
 		rgb=host.options.styles[0].color
 		SetTextAreaColor textarea,rgb.red,rgb.green,rgb.blue,False
+		SetTextAreaCaretWidth textarea,host.options.caretstyle.width
+		rgb=host.options.caretstyle.color
+		SetTextAreaCaretColor textarea,rgb.red,rgb.green,rgb.blue
 		src=cleansrc
 		cleansrc=""
 		cleansrcl=""
