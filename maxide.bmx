@@ -51,6 +51,9 @@ Import brl.ramstream
 Import pub.freeprocess
 Import brl.pngloader
 Import brl.timer
+?bmxng
+Import brl.timerdefault
+?
 Import brl.maxutil
 
 Incbin "bmxlogo.png"
