@@ -1083,7 +1083,7 @@ Type TGadgetStyle
 	End Method
 
 	Method ToString$()
-		Return font_name+","+font_size+","+fg.ToString()+","+bg.ToString()+","+font_type
+		Return font_name+","+String(font_size).Replace(",",".")+","+fg.ToString()+","+bg.ToString()+","+font_type
 	End Method
 	
 	Function GetArg$(a$ Var)
