@@ -24,25 +24,36 @@
 
 Strict
 
-Framework MaxGUI.Drivers
+Framework brl.standardio
+
+?macos
+Import MaxGUI.CocoaMaxGui
+?win32
+Import MaxGUI.Win32MaxGUIEx
+?linux
+Import bah.gtkmaxgui
+Import bah.gtkwebgtkhtml
+'Import bah.gtkwebmozilla
+Import bah.maxguitextareascintilla
+?
 Import MaxGUI.ProxyGadgets
 
-?Win32
+?Win32x86
 Import "maxicons.o"
+?Win32x64
+Import "maxicons64.o"
 ?
 
-'Import bah.gtkmaxgui
-'Import bah.gtkwebgtkhtml
-'Import bah.gtkwebmozilla
-
 Import brl.eventqueue
-Import brl.standardio
 Import brl.filesystem
 Import brl.system
 Import brl.ramstream
 Import pub.freeprocess
 Import brl.pngloader
 Import brl.timer
+?bmxng
+Import brl.timerdefault
+?
 Import brl.maxutil
 
 Incbin "bmxlogo.png"
@@ -56,7 +67,7 @@ Const DEFAULT_LANGUAGEPATH$ = "incbin::default.language.ini"
 Incbin "window_icon.png"
 ?
 
-Const IDE_VERSION$="1.44 beta"
+Const IDE_VERSION$="1.44 beta [ng]"
 Const TIMER_FREQUENCY=15
 
 AppTitle = "MaxIDE "+IDE_VERSION
@@ -176,6 +187,36 @@ Const MENUCLOSEOTHERS=60
 
 Const MENUTHREADEDENABLED=61
 
+Const MENUVERBOSEENABLED=62
+Const MENUQUICKSCANENABLED=63
+Const MENUUNIVERSALENABLED=64
+Const MENUWARNOVERENABLED=65
+Const MENUGDBDEBUGENABLED=66
+
+
+Const MENUPLATFORM=80
+Const MENUWIN32ENABLED=81
+Const MENULINUXENABLED=82
+Const MENUMACOSXENABLED=83
+Const MENURASPBERRYPIENABLED=84
+Const MENUANDROIDENABLED=85
+Const MENUEMSCRIPTENENABLED=86
+Const MENUIOSENABLED=87
+
+Const MENUARCHITECTURE=90
+Const MENUX86ENABLED=91
+Const MENUX64ENABLED=92
+Const MENUPPCENABLED=93
+Const MENUARMENABLED=94
+Const MENUARMEABIV5ENABLED=95
+Const MENUARMEABIV7AENABLED=96
+Const MENUARM64V8AENABLED=97
+Const MENUJSENABLED=98
+Const MENUARMV7ENABLED=99
+Const MENUARM64ENABLED=100
+
+Const MENUAPPSTUB=160
+
 Const MENURECENT=256
 
 Const TB_NEW=0
@@ -268,18 +309,18 @@ Type TQuickHelp
 	End Method
 	
 	Function LoadCommandsTxt:TQuickHelp(bmxpath$)
-		Local	text$
+		Local	Text$
 		Local	qh:TQuickHelp
 		Local	i:Int,c,p,q
 		Local	token$,help$,anchor$
 		Try
-			text=CacheAndLoadText(bmxpath+"/docs/html/Modules/commands.txt")
+			Text=CacheAndLoadText(bmxpath+"/docs/html/Modules/commands.txt")
 		Catch exception:Object
 			Return Null
 		EndTry
-		If Not text Return Null
+		If Not Text Return Null
 		qh=New TQuickHelp
-		For Local l$ = EachIn text.Split("~n")
+		For Local l$ = EachIn Text.Split("~n")
 			For i=0 Until l.length
 				c=l[i]
 				If c=Asc("_") Continue
@@ -528,6 +569,9 @@ Type TAboutRequester Extends TRequester
 		
 		strHeadings:+["{{about_label_bccver}}:"]
 		strValues:+[BCC_VERSION]
+
+		strHeadings:+["{{about_label_bmkver}}:"]
+		strValues:+[GetBMK()]
 		
 		strHeadings:+[""]
 		strValues:+[""]
@@ -541,7 +585,10 @@ Type TAboutRequester Extends TRequester
 		
 		?Win32
 		strHeadings:+["{{about_label_mingwpath}}:"]
-		If getenv_("MINGW") Then
+		' check For Local mingw32 dir First
+		If FileType(BlitzMaxPath() + "/MinGW32") = FILETYPE_DIR Then
+			strValues:+[(BlitzMaxPath() + "/MinGW32").Replace("/","\")]
+		Else If getenv_("MINGW") Then
 			strValues:+[getenv_("MINGW")]
 		Else
 			strValues:+[LocalizeString("{{about_error_unavailable}}")]
@@ -558,7 +605,7 @@ Type TAboutRequester Extends TRequester
 		
 		strHeadings:+["{{about_label_gccver}}:"]
 		strValues:+[GetGCC()]
-		
+
 		strHeadings:+["{{about_label_gplusplusver}}:"]
 		strValues:+[GetGpp()]
 		
@@ -590,6 +637,7 @@ Type TAboutRequester Extends TRequester
 				EndIf
 			Until (Not process.status()) Or (MilliSecs() > tmpTimeout)
 			process.Close()
+
 			Return version.Trim().Replace("~r","")
 		EndIf
 		
@@ -604,18 +652,39 @@ Type TAboutRequester Extends TRequester
 		?
 	EndMethod
 	
+	Method GetBMK$()
+		Local tmpSections$[] = GetProcessOutput(BlitzMaxPath()+"/bin/bmk", "-v").Split("~n")
+		Return tmpSections[tmpSections.length-1]
+	EndMethod
+	
 	Method GetGCC$()
 		?Win32
-		If Not getenv_("MinGW") Then Return LocalizeString("{{about_error_notapplicable}}")
+		Local gccPath:String = BlitzMaxPath() + "/MinGW32"
+		If Not FileType(gccPath) Then
+			gccPath = getenv_("MinGW")
+			If Not gccPath Then Return LocalizeString("{{about_error_notapplicable}}")
+		End If
+		gccPath :+ "/bin/gcc"
+		gccPath = gccPath.Replace("/", "\")
+		? Not win32
+		Local gccPath:String = "gcc"
 		?
-		Return GetProcessOutput("gcc", "-dumpversion").Split("~n")[0]
+		Return GetProcessOutput(gccPath, "-dumpversion").Split("~n")[0]
 	EndMethod
 	
 	Method GetGpp$()
 		?Win32
-		If Not getenv_("MinGW") Then Return LocalizeString("{{about_error_notapplicable}}")
+		Local gppPath:String = BlitzMaxPath() + "/MinGW32"
+		If Not FileType(gppPath) Then
+			gppPath = getenv_("MinGW")
+			If Not gppPath Then Return LocalizeString("{{about_error_notapplicable}}")
+		End If
+		gppPath:+ "/bin/g++"
+		gppPath = gppPath.Replace("/", "\")
+		? Not win32
+		Local gppPath:String = "g++"
 		?
-		Return GetProcessOutput("g++", "-dumpversion").Split("~n")[0]
+		Return GetProcessOutput(gppPath, "-dumpversion").Split("~n")[0]
 	EndMethod
 	
 	Method PopulateColumns( strHeadings$[], strValues$[] )
@@ -658,7 +727,7 @@ Type TAboutRequester Extends TRequester
 	Function Create:TAboutRequester(host:TCodePlay)
 		
 		Local abt:TAboutRequester = New TAboutRequester
-		abt.initrequester(host,"{{about_window_title}}",420,255,STYLE_CANCEL|STYLE_DIVIDER|STYLE_MODAL)
+		abt.initrequester(host,"{{about_window_title}}",420,277,STYLE_CANCEL|STYLE_DIVIDER|STYLE_MODAL)
 		
 		Local win:TGadget = abt.window, w = ClientWidth(abt.window)-12, h = ClientHeight(abt.window)
 		
@@ -672,11 +741,18 @@ Type TAboutRequester Extends TRequester
 		SetGadgetPixmap abt.pnlLogo, pixLogo, PANELPIXMAP_CENTER
 		
 		Local y = 12
-		
-		abt.lblTitle = CreateLabel("MaxIDE "+IDE_VERSION,6,y,w,18,win,LABEL_LEFT)
+		Local arch:String
+?x86
+		arch = "x86"
+?x64
+		arch = "x64"
+?arm
+		arch = "ARM"
+?
+		abt.lblTitle = CreateLabel("MaxIDE "+IDE_VERSION + " (" + arch + ")",6,y,w,20,win,LABEL_LEFT)
 		SetGadgetFont abt.lblTitle, LookupGuiFont( GUIFONT_SYSTEM, 12, FONT_BOLD )
 		SetGadgetLayout abt.lblTitle, EDGE_ALIGNED, EDGE_ALIGNED, EDGE_ALIGNED, EDGE_CENTERED
-		y:+19
+		y:+21
 		
 		abt.lblSubtitle = CreateLabel("Copyright Blitz Research Ltd.",6,y,w,22,win,LABEL_LEFT)
 		SetGadgetFont abt.lblSubtitle, LookupGuiFont( GUIFONT_SYSTEM, 10, FONT_ITALIC )
@@ -690,7 +766,7 @@ Type TAboutRequester Extends TRequester
 		
 		Local tmpGadget:TGadget
 		
-		For y = y Until (255-21) Step 22
+		For y = y Until (277-21) Step 22
 			
 			tmpGadget = CreateLabel("",6,y,135,22,win,LABEL_LEFT)
 			SetGadgetLayout( tmpGadget, EDGE_ALIGNED, EDGE_RELATIVE, EDGE_ALIGNED, EDGE_CENTERED )
@@ -767,12 +843,12 @@ Type TGotoRequester Extends TRequester
 	End Method
 
 	Method Poll()
-		Local	line,data,text$
+		Local	line,data,Text$
 		Select EventSource()
 			Case linenumber
 				If EventID() = EVENT_GADGETACTION
-					text = GadgetText(linenumber)
-					If text And (Int(text) <> text) Then SetGadgetText linenumber, Int(text)
+					Text = GadgetText(linenumber)
+					If Text And (Int(Text) <> Text) Then SetGadgetText linenumber, Int(Text)
 				EndIf
 			Case window
 				If EventID()=EVENT_WINDOWCLOSE
@@ -915,6 +991,67 @@ Type TTextStyle
 	End Function
 End Type
 
+Type TCaretStyle
+
+	Field	label:TGadget,panel:TGadget,combo:TGadget
+	Field	color:TColor
+	Field	width:Int = 1
+	
+	Method Set(rgb,width)
+		color.set(rgb)
+		Self.width=width
+	End Method
+
+	Method ToString$()
+		Return ""+color.red+","+color.green+","+color.blue+","+width
+	End Method
+
+	Method FromString(s$)
+		Local	p,q,r
+		p=s.Find(",")+1;If Not p Return
+		q=s.Find(",",p)+1;If Not q Return
+		r=s.Find(",",q)+1;If Not r Return
+		color.red=Int(s[..p-1])
+		color.green=Int(s[p..q-1])
+		color.blue=Int(s[q..r-1])
+		width=Min(3,Max(1,Int(s[r..])))
+	End Method
+
+	Method Poll()
+		Select EventSource()
+			Case panel
+				If EventID()=EVENT_MOUSEDOWN
+					Return color.Request()
+				EndIf
+			Case combo
+				width=SelectedGadgetItem(combo) + 1
+				Return True
+			'Case underline
+			'	If EventData() Then flags:|TEXTFORMAT_UNDERLINE Else flags:&~TEXTFORMAT_UNDERLINE
+			'	Return True
+		End Select
+	End Method
+	
+	Method Refresh()
+		SetPanelColor panel,color.red,color.green,color.blue
+		SelectGadgetItem combo,width - 1
+	End Method
+
+	Function Create:TCaretStyle(name$,xpos,ypos,window:TGadget)
+		Local	s:TCaretStyle
+		s=New TCaretStyle
+		s.color=New TColor
+		s.label=CreateLabel(name,xpos,ypos+4,90,24,window)
+		s.panel=CreatePanel(xpos+94,ypos,24,24,window,PANEL_BORDER|PANEL_ACTIVE)
+		SetPanelColor s.panel,255,255,0
+		s.combo=CreateComboBox(xpos+122,ypos,96,24,window)
+		AddGadgetItem s.combo,"{{caretstyle_width_1}}",GADGETITEM_LOCALIZED
+		AddGadgetItem s.combo,"{{caretstyle_width_2}}",GADGETITEM_LOCALIZED
+		AddGadgetItem s.combo,"{{caretstyle_width_3}}",GADGETITEM_LOCALIZED
+		Return s
+	End Function
+End Type
+
 Type TGadgetStyle
 	
 	Global fntLibrary:TGUIFont[] =	[TGuiFont(Null), LookupGuiFont(GUIFONT_SYSTEM), LookupGuiFont(GUIFONT_MONOSPACED), ..
@@ -946,7 +1083,7 @@ Type TGadgetStyle
 	End Method
 
 	Method ToString$()
-		Return font_name+","+font_size+","+fg.ToString()+","+bg.ToString()+","+font_type
+		Return font_name+","+String(font_size).Replace(",",".")+","+fg.ToString()+","+bg.ToString()+","+font_type
 	End Method
 	
 	Function GetArg$(a$ Var)
@@ -1043,7 +1180,7 @@ Const MATCHING=5
 
 Type TOptionsRequester Extends TPanelRequester
 ' panels
-	Field	optionspanel:TGadget,editorpanel:TGadget,toolpanel:TGadget
+	Field	optionspanel:TGadget,editorpanel:TGadget,toolpanel:TGadget,appstubpanel:TGadget
 ' settings
 	Field	showtoolbar,restoreopenfiles,autocapitalize,syntaxhighlight,autobackup,autoindent,hideoutput
 	Field	bracketmatching, externalhelp,systemkeys,sortcode
@@ -1063,6 +1200,12 @@ Type TOptionsRequester Extends TPanelRequester
 	Field	navstyle:TGadgetStyle
 	Field	dirty
 	Field	undo:TBank
+	Field appstublist:TGadget
+	Field appstubs:String[]
+	Field appstubedit:TGadget
+	Field addappstub:TGadget
+	Field delappstub:TGadget
+	Field caretStyle:TCaretStyle
 	
 	Method Show()
 		RefreshGadgets()
@@ -1104,6 +1247,9 @@ Type TOptionsRequester Extends TPanelRequester
 		styles[MATCHING].set( $ff4040,TEXTFORMAT_BOLD )
 		outputstyle.set(0,-1,GUIFONT_MONOSPACED)
 		navstyle.set(0,-1,GUIFONT_SYSTEM)
+		appstubs = ["brl.appstub"]
+		caretStyle.set($ffffff,1)
+		
 		RefreshGadgets
 	End Method
 
@@ -1133,10 +1279,15 @@ Type TOptionsRequester Extends TPanelRequester
 		stream.WriteLine "external_help="+externalhelp
 		stream.WriteLine "system_keys="+systemkeys
 		stream.WriteLine "sort_code="+sortcode
+		For Local i:Int = 1 Until appstubs.length
+			stream.WriteLine "appstub_" + i + "="+appstubs[i]
+		Next
+		stream.WriteLine "caret_style="+caretstyle.ToString()
 	End Method
 
 	Method Read(stream:TStream)
 		Local	f$,p,a$,b$,t
+		appstubs = ["brl.appstub"]
 		While Not stream.Eof()
 			f$=stream.ReadLine()
 			If f$="" Or (f$[..1]="[" And f$<>"[Options]") Exit
@@ -1168,6 +1319,7 @@ Type TOptionsRequester Extends TPanelRequester
 				Case "external_help" externalhelp=t
 				Case "system_keys" systemkeys=t
 				Case "sort_code" sortcode=t
+				Case "caret_style" caretstyle.FromString(b)
 				Case "language"
 					Try
 						Local tmpLanguage:TMaxGUILanguage = LoadLanguage(host.FullPath(b))
@@ -1179,6 +1331,9 @@ Type TOptionsRequester Extends TPanelRequester
 					Catch excn:Object
 					EndTry
 			End Select
+			If a.StartsWith("appstub_") Then
+				appstubs :+ [b]
+			End If
 		Wend		
 		RefreshGadgets
 	End Method
@@ -1215,6 +1370,7 @@ Type TOptionsRequester Extends TPanelRequester
 		For Local i:Int = 0 Until styles.length
 			styles[i].Refresh
 		Next
+		caretstyle.Refresh
 		LockTextArea textarea
 		SetTextAreaColor textarea,editcolor.red,editcolor.green,editcolor.blue,True
 		SetGadgetFont textarea,editfont
@@ -1231,6 +1387,13 @@ Type TOptionsRequester Extends TPanelRequester
 		outputstyle.Refresh
 		navstyle.Refresh
 		dirty=True
+		
+		ClearGadgetItems appstublist
+		For Local appstub:String = EachIn appstubs
+			AddGadgetItem appstublist,appstub
+		Next
+		DisableGadget addappstub
+		DisableGadget delappstub
 	End Method
 
 	Method Poll()
@@ -1238,6 +1401,7 @@ Type TOptionsRequester Extends TPanelRequester
 		For Local i:Int = 0 Until styles.length
 			refresh:|styles[i].Poll()
 		Next
+		refresh:|caretstyle.Poll()
 		refresh:|outputstyle.Poll()
 		refresh:|navstyle.Poll()
 		Select EventID()
@@ -1262,6 +1426,8 @@ Type TOptionsRequester Extends TPanelRequester
 								host.RefreshAll
 							Case 2
 								host.Restart
+							Case 3
+								host.RefreshAppStubs
 						End Select
 						dirty=False
 						SnapShot()
@@ -1298,9 +1464,42 @@ Type TOptionsRequester Extends TPanelRequester
 							SetLocalizationLanguage defaultLanguage
 						EndIf
 						host.RefreshMenu()
+					Case addappstub
+						If GadgetText(appstubedit) Then
+							appstubs :+ [GadgetText(appstubedit).ToLower()]
+							SetGadgetText appstubedit, ""
+						End If
+						refresh=True
+						dirty=3
+					Case delappstub
+						Local index:Int = SelectedGadgetItem(appstublist)
+						If index > 0 Then
+							If index < appstubs.length
+								appstubs = appstubs[..index] + appstubs[index+1..]
+							Else
+								appstubs = appstubs[..index]
+							End If
+							refresh=True
+							dirty=3
+						End If
+					Case appstubedit
+						If GadgetText(appstubedit) Then
+							EnableGadget addappstub
+						Else
+							DisableGadget addappstub
+						End If
 					Default
 						processed = 0
 				EndSelect
+			Case EVENT_GADGETSELECT
+				Select EventSource()
+					Case appstublist
+						If SelectedGadgetItem(appstublist) > 0 Then
+							EnableGadget delappstub
+						Else
+							DisableGadget delappstub
+						End If
+				End Select
 			Case EVENT_MOUSEDOWN
 				Select EventSource()
 					Case editpanel
@@ -1318,13 +1517,14 @@ Type TOptionsRequester Extends TPanelRequester
 	
 	Method InitOptionsRequester(host:TCodePlay)		
 		Local	w:TGadget
-		InitPanelRequester(host,"{{options_window_title}}",380,430)
+		InitPanelRequester(host,"{{options_window_title}}",380,460)
 ' init values
 		editcolor=New TColor
 ' init gadgets
 		optionspanel=AddPanel("{{options_optionstab}}")
 		editorpanel=AddPanel("{{options_editortab}}")
 		toolpanel=AddPanel("{{options_toolstab}}")
+		appstubpanel=AddPanel("{{options_appstubtab}}")
 		
 		SetGadgetShape( tabber, GadgetX(tabber), GadgetY(tabber)+32, GadgetWidth(tabber), GadgetHeight(tabber)-32 )
 		
@@ -1364,12 +1564,25 @@ Type TOptionsRequester Extends TPanelRequester
 		styles[NUMBER]=TTextStyle.Create("{{options_editor_label_numbers}}:",6,186,w)
 		styles[MATCHING]=TTextStyle.Create("{{options_editor_label_matchings}}:",6,216,w)
 		
-		textarea=CreateTextArea(6,250,ClientWidth(w)-12,ClientHeight(w)-256,w,TEXTAREA_READONLY)
+		caretstyle = TCaretStyle.Create("{{options_editor_label_caret}}:",6,250,w)
+		
+		textarea=CreateTextArea(6,280,ClientWidth(w)-12,ClientHeight(w)-256,w,TEXTAREA_READONLY)
 		SetGadgetText textarea,"'Sample Code~n~nresult = ((2.0 * 4) + 1)~nPrint( ~qResult: ~q + result )~n"
 		
 		w=toolpanel
 		outputstyle=TGadgetStyle.Create("{{options_tools_label_output}}: ",6,6,w)
 		navstyle=TGadgetStyle.Create("{{options_tools_label_navbar}}: ",6,66,w)
+
+		w=appstubpanel
+		appstublist=CreateListBox(6,6,ClientWidth(w)-12,ClientHeight(w)-80,w)
+		appstubedit=CreateTextField(6,ClientHeight(w)-66,ClientWidth(w)-12,21,w)
+		addappstub=CreateButton("{{options_appstub_btn_add}}",6,ClientHeight(w)-40,140,26,w,BUTTON_PUSH)
+		delappstub=CreateButton("{{options_appstub_btn_del}}",ClientWidth(w)-146,ClientHeight(w)-40,140,26,w,BUTTON_PUSH)
+		appstubs = ["brl.appstub"]
+		AddGadgetItem appstublist,appstubs[0]
+
+		DisableGadget addappstub
+		DisableGadget delappstub
 
 		SetDefaults()
 		SetPanel optionspanel
@@ -2951,6 +3164,7 @@ Type TProjects Extends TNode
 	End Function
 End Type
 
+?Not bmxng
 Type TByteBuffer Extends TStream
 	Field	bytes:Byte[]
 	Field	readpointer
@@ -3011,6 +3225,68 @@ Type TByteBuffer Extends TStream
 		Return res
 	End Method
 End Type
+?bmxng
+Type TByteBuffer Extends TStream
+	Field	bytes:Byte[]
+	Field	readpointer:Long
+
+	Method Read:Long( buf:Byte Ptr,count:Long )
+		If count>readpointer count=readpointer
+		If Not count Return
+		MemCopy buf,bytes,count
+		readpointer:-count
+		If readpointer MemMove bytes,Varptr bytes[count],readpointer
+		Return count
+	End Method
+	
+	Method ReadLine$()
+		For Local i:Int = 0 Until readpointer
+			If bytes[i]=10 Or bytes[i] = 0 Then
+				Local tmpBytes:Byte[] = New Byte[i+1]
+				If i And bytes[i-1] = 13 Then i:-1
+				Read(tmpBytes,tmpBytes.length)
+				Return String.FromBytes(tmpBytes, i)
+			EndIf
+		Next
+	EndMethod
+	
+	Method WriteFromPipe( pipe:TPipeStream )
+		Local	n,m,count = pipe.ReadAvail()
+		n=readpointer+count
+		If n>bytes.length
+			m=Max(bytes.length*1.5,n)
+			bytes=bytes[..m]
+		EndIf
+		pipe.Read( Varptr bytes[readpointer], count )
+		readpointer=n
+		Return count
+	EndMethod
+	
+	Method Write:Long( buf:Byte Ptr,count:Long )
+		Local	n:Long,m:Long
+		n=readpointer+count
+		If n>bytes.length
+			m=Max(bytes.length*1.5,n)
+			bytes=bytes[..m]
+		EndIf
+		MemCopy Varptr bytes[readpointer],buf,count
+		readpointer=n
+		Return count
+	End Method	
+	
+	Method LineAvail()
+		For Local i:Int = 0 Until readpointer
+			If bytes[i]=10 Return True
+		Next
+	End Method
+
+	Method FlushBytes:Byte[]()
+		Local res:Byte[] = bytes[..readpointer]
+		readpointer = 0
+		Return res
+	End Method
+End Type
+?
 
 Type TObj
 	Field	addr$,sync,refs,syncnext
@@ -4187,6 +4463,9 @@ Type TOpenCode Extends TToolPanel
 		SetTextAreaColor textarea,rgb.red,rgb.green,rgb.blue,True
 		rgb=host.options.styles[0].color
 		SetTextAreaColor textarea,rgb.red,rgb.green,rgb.blue,False
+		SetTextAreaCaretWidth textarea,host.options.caretstyle.width
+		rgb=host.options.caretstyle.color
+		SetTextAreaCaretColor textarea,rgb.red,rgb.green,rgb.blue
 		src=cleansrc
 		cleansrc=""
 		cleansrcl=""
@@ -4936,8 +5215,8 @@ Type TOpenCode Extends TToolPanel
 		Return True
 	End Method
 
-	Method BuildSource(quick,debug,threaded,gui,run)
-		Local cmd$,out$,arg$		
+	Method BuildSource(quick,debug,threaded,gui,run, verbose, quickscan, universal, warnover, gdbdebug, platform:String = Null, architecture:String = Null, appstub:String = Null)
+		Local cmd$,out$,arg$
 		If isbmx Or isc Or iscpp
 			cmd$=quote(host.bmkpath)
 			cmd$:+" makeapp"
@@ -4946,6 +5225,16 @@ Type TOpenCode Extends TToolPanel
 			If threaded cmd$:+" -h"
 			If gui cmd$:+" -t gui"
 			If Not quick cmd$:+" -a"
+			If verbose cmd :+ " -v"
+			If quickscan cmd :+ " -quick"
+			If universal cmd :+ " -i"
+			If warnover cmd :+ " -w"
+			If gdbdebug cmd :+ " -gdb"
+			If appstub And appstub <> "brl.appstub" cmd :+ " -b " + appstub
+
+			If platform cmd :+ " -l " + platform
+			If architecture cmd :+ " -g " + architecture
+
 			If debug Or threaded
 				out=StripExt(host.FullPath(path))
 				If debug out:+".debug"
@@ -5051,9 +5340,9 @@ Type TOpenCode Extends TToolPanel
 			Case TOOLREPLACE
 				Return FindReplace(String(argument))	
 			Case TOOLBUILD
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,False, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.warnoverenabled, host.gdbdebugenabled, host.GetPlatform(), host.GetArchitecture(), host.selectedappstub
 			Case TOOLRUN
-				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True
+				BuildSource host.quickenabled,host.debugenabled,host.threadedenabled,host.guienabled,True, host.verboseenabled, host.quickscanenabled, host.universalenabled, host.warnoverenabled, host.gdbdebugenabled, host.GetPlatform(), host.GetArchitecture(), host.selectedappstub
 			Case TOOLLOCK
 				SetLocked True
 			Case TOOLUNLOCK
@@ -5240,13 +5529,18 @@ Type TCodePlay
 	Field coderoot:TNode
 	Field navbar:TNavBar	
 
-	Field mode
+	Field Mode
 	Field debugcode:TOpenCode
 
 	Field quickenable:TGadget,quickenabled	'menu,state
 	Field debugenable:TGadget,debugenabled	'menu,state
 	Field threadedenable:TGadget,threadedenabled
 	Field guienable:TGadget,guienabled		'menu,state
+	Field verboseenable:TGadget,verboseenabled		'menu,state
+	Field quickscanenable:TGadget,quickscanenabled		'menu,state
+	Field universalenable:TGadget,universalenabled		'menu,state
+	Field warnoverenable:TGadget,warnoverenabled		'menu,state
+	Field gdbdebugenable:TGadget,gdbdebugenabled		'menu,state
 	Field quickhelp:TQuickHelp
 	Field running
 	Field recentmenu:TGadget
@@ -5258,6 +5552,36 @@ Type TCodePlay
 	Field winsize:TRect=New TRect
 	Field winmax,tooly,splitpos,debugview,navtab
 	Field progress,splitorientation
+	Field selectedappstub:String
+
+	Field win32enable:TGadget	'menu
+	Field linuxenable:TGadget	'menu
+	Field macosxenable:TGadget	'menu
+	Field iosenable:TGadget	'menu
+	Field raspberrypienable:TGadget	'menu
+	Field androidenable:TGadget	'menu
+	Field emscriptenenable:TGadget	'menu
+	
+	Field platformenabled:Int[7]
+	Const PLATFORMOFFSET:Int = 81
+
+	Field x86enable:TGadget	'menu
+	Field x64enable:TGadget	'menu
+	Field ppcenable:TGadget	'menu
+	Field armenable:TGadget	'menu
+	Field armeabiv5enable:TGadget	'menu
+	Field armeabiv7aenable:TGadget	'menu
+	Field arm64v8aenable:TGadget	'menu
+	Field jsenable:TGadget	'menu
+	Field armv7enable:TGadget	'menu
+	Field arm64enable:TGadget	'menu
+	
+	Field architectureenabled:Int[10]
+	Const ARCHITECTUREOFFSET:Int = 91
+	
+	Const APPSTUBOFFSET:Int = 161
+	Field appstubmenus:TGadget[]
+	Field appstubmenu:TGadget
 
 ?MacOS	
 	Method RanlibMods()
@@ -5369,8 +5693,31 @@ Type TCodePlay
 		quickenabled=False
 		debugenabled=True
 		threadedenabled=False
-		guienabled=True	
+		guienabled=True
+		verboseenabled=False
+		quickscanenabled=True
+		universalenabled=False
+		warnoverenabled=True
+		gdbdebugenabled=False
+		For Local i:Int = 0 Until platformenabled.length
+			platformenabled[i] = False
+		Next
+?win32
+		platformenabled[MENUWIN32ENABLED - PLATFORMOFFSET] = True
+?linuxx86
+		platformenabled[MENULINUXENABLED - PLATFORMOFFSET] = True
+?linuxx64
+		platformenabled[MENULINUXENABLED - PLATFORMOFFSET] = True
+?macos
+		platformenabled[MENUMACOSXENABLED - PLATFORMOFFSET] = True
+?raspberrypi
+		platformenabled[MENURASPBERRYPIENABLED - PLATFORMOFFSET] = True
+?emscripten
+		platformenabled[MENUEMSCRIPTENENABLED - PLATFORMOFFSET] = True
+?
+
 		splitpos=200;splitorientation = SPLIT_VERTICAL
+		selectedappstub="brl.appstub"
 ' read ini
 		stream=ReadFile(bmxpath+"/cfg/ide.ini")
 		If Not stream
@@ -5407,6 +5754,30 @@ Type TCodePlay
 					threadedenabled=Int(b$)
 				Case "prg_gui"
 					guienabled=Int(b$)
+				Case "prg_verbose"
+					verboseenabled=Int(b$)
+				Case "prg_quickscan"
+					quickscanenabled=Int(b$)
+				Case "prg_universal"
+					universalenabled=Int(b$)
+				Case "prg_warnover"
+					warnoverenabled=Int(b$)
+				Case "prg_gdbdebug"
+					gdbdebugenabled=Int(b$)
+				Case "prg_platform"
+					For Local i:Int = 0 Until platformenabled.length
+						platformenabled[i] = False
+						If i = Int(b$) Then
+							platformenabled[i] = True
+						End If
+					Next
+				Case "prg_architecture"
+					For Local i:Int = 0 Until architectureenabled.length
+						architectureenabled[i] = False
+						If i = Int(b$) Then
+							architectureenabled[i] = True
+						End If
+					Next
 				Case "cmd_line"
 					cmdline=b$
 				Case "prg_locked"
@@ -5425,6 +5796,8 @@ Type TCodePlay
 					projlist.AddLast projdata
 				Case "proj_data"
 					If projdata projdata.AddLast b
+				Case "appstub"
+					selectedappstub = b
 				'Case "sync_state"
 					'syncmodsreq.FromString b$
 			End Select
@@ -5448,15 +5821,37 @@ Type TCodePlay
 		stream.WriteLine "prg_debug="+debugenabled
 		stream.WriteLine "prg_threaded="+threadedenabled
 		stream.WriteLine "prg_gui="+guienabled
+		stream.WriteLine "prg_verbose="+verboseenabled
+		stream.WriteLine "prg_quickscan="+quickscanenabled
+		stream.WriteLine "prg_universal="+universalenabled
+		stream.WriteLine "prg_warnover="+warnoverenabled
+		stream.WriteLine "prg_gdbdebug="+gdbdebugenabled
+		For Local i:Int = 0 Until platformenabled.length
+			If platformenabled[i] Then
+				stream.WriteLine "prg_platform=" + i
+			End If
+		Next
+		For Local i:Int = 0 Until architectureenabled.length
+			If architectureenabled[i] Then
+				stream.WriteLine "prg_architecture=" + i
+			End If
+		Next
 		stream.WriteLine "win_size="+winsize.ToString()
 		stream.WriteLine "win_max="+winmax
 		stream.WriteLine "split_position="+SplitterPosition(split)
 		stream.WriteLine "split_orientation="+SplitterOrientation(split)
 		stream.WriteLine "cmd_line="+cmdline
+		If selectedappstub Then
+			stream.WriteLine "appstub="+selectedappstub
+		End If
 		'stream.WriteLine "sync_state="+syncmodsreq.ToString()
 		If lockedpanel stream.WriteLine "prg_locked="+lockedpanel.path
+		Local n:Int
 		For f$=EachIn recentfiles
 			stream.WriteLine "file_recent="+f$
+			' only last 20
+			If n=20 Exit
+			n:+1
 		Next
 		For Local panel:TToolPanel = EachIn panels
 			f$=panel.path
@@ -5513,7 +5908,7 @@ Type TCodePlay
 	End Method
 	
 	Method SetMode(m)
-		If mode=m Return
+		If Mode=m Return
 		ActivateWindow window
 		Select m
 		Case DEBUGMODE
@@ -5522,7 +5917,7 @@ Type TCodePlay
 		Case EDITMODE
 			navbar.SelectView navtab
 		End Select
-		mode=m
+		Mode=m
 		RefreshToolbar
 	End Method
 	
@@ -5551,7 +5946,7 @@ Type TCodePlay
 			Next			
 		EndIf
 ' debug buttons
-		If mode = DEBUGMODE And debugtree.cancontinue Then
+		If Mode = DEBUGMODE And debugtree.cancontinue Then
 			If GadgetItemIcon( toolbar, TB_BUILDRUN ) = TB_BUILDRUN Then
 				ModifyGadgetItem( toolbar, TB_BUILDRUN, "", GADGETITEM_LOCALIZED, TB_CONTINUE, "{{tb_continue}}" )
 			EndIf
@@ -5561,7 +5956,7 @@ Type TCodePlay
 			EndIf
 		EndIf
 		For i=TB_STEP To TB_STEPOUT
-			If mode=DEBUGMODE And debugtree.cancontinue Then
+			If Mode=DEBUGMODE And debugtree.cancontinue Then
 				EnableGadgetItem toolbar,i
 			Else
 				DisableGadgetItem toolbar,i
@@ -5638,6 +6033,31 @@ Type TCodePlay
 		Next
 	End Method
 	
+	Method RefreshAppStubs()
+		For Local m:TGadget = EachIn appstubmenus
+			FreeMenu m
+		Next
+		Local n:Int = options.appstubs.length
+		appstubmenus=New TGadget[n]
+		n=0
+		Local checked:Int
+		For Local a:String = EachIn options.appstubs
+			appstubmenus[n]=CreateMenu(a,APPSTUBOFFSET+n,appstubmenu)
+			If selectedappstub = a Then
+				CheckMenu appstubmenus[n]
+				checked = True
+			Else
+				UncheckMenu appstubmenus[n]
+			End If
+			n:+1
+		Next
+		' didn't match any app stubs. choose default (brl.appstub)
+		If Not checked Then
+			selectedappstub = options.appstubs[0]
+			CheckMenu appstubmenus[0]
+		End If
+	End Method
+	
 	Method BuildModules(buildall)
 		Local cmd$,out$,exe$
 		output.Stop
@@ -5647,6 +6067,15 @@ Type TCodePlay
 		
 		If buildall cmd$:+"-a "
 		If threadedenabled cmd:+"-h "
+		If verboseenabled cmd:+"-v "
+		If quickscanenabled cmd:+"-quick "
+		If universalenabled cmd:+"-i "
+		If warnoverenabled cmd:+"-w "
+		If gdbdebugenabled cmd:+"-gdb "
+		Local platform:String = GetPlatform()
+		Local architecture:String = GetArchitecture()
+		If platform cmd :+ "-l " + platform + " "
+		If architecture cmd :+ "-g " + architecture + " "
 		
 		Execute cmd,LocalizeString("{{output_msg_buildingmods}}")
 	End Method
@@ -5666,12 +6095,12 @@ Type TCodePlay
 		Return cmdline
 	End Method
 
-	Method SetCommandLine(text$)
-		cmdline=text
+	Method SetCommandLine(Text$)
+		cmdline=Text
 	End Method
 	
-	Method SetStatus(text$)
-		SetStatusText window,text
+	Method SetStatus(Text$)
+		SetStatusText window,Text
 	End Method
 
 	Method Execute(cmd$,mess$="",post$="",home=True,tool:TTool=Null)
@@ -5944,7 +6373,7 @@ Type TCodePlay
 		
 		ReadConfig()
 
-		toolbar=CreateToolbar("incbin::toolbar.png",0,0,0,0,window )
+		toolbar=CreateToolBar("incbin::toolbar.png",0,0,0,0,window )
 		
 		RemoveGadgetItem toolbar, TB_CONTINUE
 		
@@ -6093,8 +6522,9 @@ Type TCodePlay
 
 	Method InitMenu()
 		Local menu:TGadget,file:TGadget,edit:TGadget,program:TGadget,tools:TGadget
-		Local help:TGadget,buildoptions:TGadget
+		Local help:TGadget,buildoptions:TGadget,devoptions:TGadget
 		Local buildmods:TGadget,buildallmods:TGadget,syncmods:TGadget,docmods:TGadget
+		Local platform:TGadget,architecture:TGadget
 
 		Local MENUMOD=MODIFIER_COMMAND
 
@@ -6180,6 +6610,7 @@ Type TCodePlay
 		CreateMenu "{{menu_program_stepin}}",MENUSTEPIN,program,KEY_F10
 		CreateMenu "{{menu_program_stepout}}",MENUSTEPOUT,program,KEY_F11
 		CreateMenu "{{menu_program_terminate}}",MENUSTOP,program
+		CreateMenu "",0,program
 		buildoptions=CreateMenu("{{menu_program_buildoptions}}",0,program)
 		quickenable=CreateMenu("{{menu_program_buildoptions_quick}}",MENUQUICKENABLED,buildoptions)
 		debugenable=CreateMenu("{{menu_program_buildoptions_debug}}",MENUDEBUGENABLED,buildoptions)
@@ -6188,6 +6619,45 @@ Type TCodePlay
 				threadedenable=CreateMenu("{{menu_program_buildoptions_threaded}}",MENUTHREADEDENABLED,buildoptions)
 		EndIf
 		guienable=CreateMenu("{{menu_program_buildoptions_guiapp}}",MENUGUIENABLED,buildoptions)
+		quickscanenable=CreateMenu("{{menu_program_buildoptions_quickscan}}",MENUQUICKSCANENABLED,buildoptions)
+?macos
+		universalenable=CreateMenu("{{menu_program_buildoptions_universal}}",MENUUNIVERSALENABLED,buildoptions)
+?
+		warnoverenable=CreateMenu("{{menu_program_buildoptions_warnover}}",MENUWARNOVERENABLED,buildoptions)
+		devoptions=CreateMenu("{{menu_program_buildoptions_dev}}",0,buildoptions)
+		verboseenable=CreateMenu("{{menu_program_buildoptions_verbose}}",MENUVERBOSEENABLED,devoptions)
+		gdbdebugenable=CreateMenu("{{menu_program_buildoptions_gdbdebug}}",MENUGDBDEBUGENABLED,devoptions)
+
+		platform=CreateMenu("{{menu_program_platform}}",0,program)
+?Not raspberrypi
+		win32enable=CreateMenu("{{menu_program_platform_win32}}",MENUWIN32ENABLED,platform)
+?linux
+		linuxenable=CreateMenu("{{menu_program_platform_linux}}",MENULINUXENABLED,platform)
+?
+?macos
+		macosxenable=CreateMenu("{{menu_program_platform_macosx}}",MENUMACOSXENABLED,platform)
+		iosenable=CreateMenu("{{menu_program_platform_ios}}",MENUIOSENABLED,platform)
+?
+		raspberrypienable=CreateMenu("{{menu_program_platform_raspberrypi}}",MENURASPBERRYPIENABLED,platform)
+?Not raspberrypi
+		androidenable=CreateMenu("{{menu_program_platform_android}}",MENUANDROIDENABLED,platform)
+?
+		emscriptenenable=CreateMenu("{{menu_program_platform_emscripten}}",MENUEMSCRIPTENENABLED,platform)
+
+		architecture=CreateMenu("{{menu_program_arch}}",0,program)
+		x86enable=CreateMenu("{{menu_program_arch_x86}}",MENUX86ENABLED,architecture)
+		x64enable=CreateMenu("{{menu_program_arch_x64}}",MENUX64ENABLED,architecture)
+		ppcenable=CreateMenu("{{menu_program_arch_ppc}}",MENUPPCENABLED,architecture)
+		armenable=CreateMenu("{{menu_program_arch_arm}}",MENUARMENABLED,architecture)
+		armeabiv5enable=CreateMenu("{{menu_program_arch_armeabiv5}}",MENUARMEABIV5ENABLED,architecture)
+		armeabiv7aenable=CreateMenu("{{menu_program_arch_armeabiv7a}}",MENUARMEABIV7AENABLED,architecture)
+		arm64v8aenable=CreateMenu("{{menu_program_arch_arm64v8a}}",MENUARM64V8AENABLED,architecture)
+		jsenable=CreateMenu("{{menu_program_arch_js}}",MENUJSENABLED,architecture)
+		armv7enable=CreateMenu("{{menu_program_arch_armv7}}",MENUARMV7ENABLED,architecture)
+		arm64enable=CreateMenu("{{menu_program_arch_arm64}}",MENUARM64ENABLED,architecture)
+
+		appstubmenu=CreateMenu("{{menu_program_appstub}}",0,program)
+		
 		CreateMenu "",0,program
 		CreateMenu "{{menu_program_lockbuildfile}}",MENULOCKBUILD,program
 		CreateMenu "{{menu_program_unlockbuildfile}}",MENUUNLOCKBUILD,program
@@ -6209,24 +6679,55 @@ Type TCodePlay
 		If debugenabled CheckMenu debugenable
 		If threadedenabled CheckMenu threadedenable
 		If guienabled CheckMenu guienable
+		If verboseenabled CheckMenu verboseenable
+		If quickscanenabled CheckMenu quickscanenable
+		If universalenabled CheckMenu universalenable
+		If warnoverenabled CheckMenu warnoverenable
+		If gdbdebugenabled CheckMenu gdbdebugenable
+
+		Local defaultArch:Int = -1
+		For Local i:Int = 0 Until architectureenabled.length
+			If architectureenabled[i] Then
+				defaultArch = i
+				Exit
+			End If
+		Next
+
+		For Local i:Int = 0 Until platformenabled.length
+			If platformenabled[i] Then
+				UpdatePlatformMenus(i + PLATFORMOFFSET)
+				If defaultArch < 0 Then
+					DefaultArchitectureMenuForPlatform(i + PLATFORMOFFSET)
+				Else
+					UpdateArchitectureMenus(defaultArch + ARCHITECTUREOFFSET)
+				End If
+				Exit
+			End If
+		Next
+		'UpdateArchitectureMenus()
 		
 ?Win32		
-		Local mingw$=getenv_("MINGW")
+		Local mingw$=BlitzMaxPath() + "/MinGW32"
+		If Not FileType(mingw) Then
+			mingw = getenv_("MINGW")
+		End If
 		If Not mingw
 			DisableMenu buildmods
 			DisableMenu buildallmods
 		EndIf
+
 ?		
 '		If is_demo
 '			DisableMenu syncmods
 '		EndIf
 		
 		RefreshRecentFiles
+		RefreshAppStubs
 		UpdateWindowMenu window
 	End Method
 
 	Method RunCode()
-		If mode=DEBUGMODE And debugtree.cancontinue
+		If Mode=DEBUGMODE And debugtree.cancontinue
 			output.Go()
 			Return
 		EndIf
@@ -6280,6 +6781,8 @@ Type TCodePlay
 		Next
 ' refresh navbar
 		navbar.invoke TOOLREFRESH
+' refresh appstub menus
+		RefreshAppStubs
 	End Method
 
 	Method SnapshotWindow()
@@ -6415,6 +6918,71 @@ Type TCodePlay
 				EndIf
 				UpdateWindowMenu window
 
+			Case MENUVERBOSEENABLED
+				If verboseenabled
+					verboseenabled=False
+					UncheckMenu verboseenable							
+				Else
+					verboseenabled=True
+					CheckMenu verboseenable
+				EndIf
+				UpdateWindowMenu window
+
+			Case MENUQUICKSCANENABLED
+				If quickscanenabled
+					quickscanenabled=False
+					UncheckMenu quickscanenable							
+				Else
+					quickscanenabled=True
+					CheckMenu quickscanenable
+				EndIf
+				UpdateWindowMenu window
+
+			Case MENUUNIVERSALENABLED
+				If universalenabled
+					universalenabled=False
+					UncheckMenu universalenable							
+				Else
+					universalenabled=True
+					CheckMenu universalenable
+				EndIf
+				UpdateWindowMenu window
+
+			Case MENUWARNOVERENABLED
+				If warnoverenabled
+					warnoverenabled=False
+					UncheckMenu warnoverenable							
+				Else
+					warnoverenabled=True
+					CheckMenu warnoverenable
+				EndIf
+				UpdateWindowMenu window
+
+			Case MENUGDBDEBUGENABLED
+				If gdbdebugenabled
+					gdbdebugenabled=False
+					UncheckMenu gdbdebugenable							
+				Else
+					gdbdebugenabled=True
+					CheckMenu gdbdebugenable
+				EndIf
+				UpdateWindowMenu window
+
+			Case MENUWIN32ENABLED, MENULINUXENABLED, MENUMACOSXENABLED, MENURASPBERRYPIENABLED, ..
+					MENUANDROIDENABLED, MENUEMSCRIPTENENABLED, MENUIOSENABLED
+
+				UpdatePlatformMenus(menu)
+				
+				UpdateWindowMenu window
+
+			Case MENUX86ENABLED, MENUX64ENABLED, MENUPPCENABLED, MENUARMENABLED, ..
+					MENUARMEABIV5ENABLED, MENUARMEABIV7AENABLED, MENUARM64V8AENABLED, ..
+					MENUJSENABLED, MENUARMV7ENABLED, MENUARM64ENABLED
+				
+				UpdateArchitectureMenus(menu)
+				
+				UpdateWindowMenu window
+
 			Case MENUIMPORTBB
 				ImportBB
 				
@@ -6465,13 +7033,293 @@ Type TCodePlay
 				navbar.invoke TOOLNEWVIEW
 				
 		End Select
-		
+
 		If menu>=MENURECENT
 			Local f:String = String(recentfiles.ValueAtIndex(menu-MENURECENT))
 			If f$ OpenSource f$
+		Else If menu >= APPSTUBOFFSET
+			Local index:Int = menu - APPSTUBOFFSET
+			If index < options.appstubs.length Then
+				selectedappstub = options.appstubs[index]
+				RefreshAppStubs
+			End If
 		EndIf
 	End Method
 	
+	Method UpdatePlatformMenus(menu:Int)
+		Local index:Int = menu - PLATFORMOFFSET
+		
+		Local platformChanged:Int = Not platformenabled[index]
+		
+		For Local i:Int = 0 Until platformenabled.Length
+			If platformenabled[i] And i <> index Then
+				Select PLATFORMOFFSET + i
+					Case MENUWIN32ENABLED
+						UncheckMenu win32enable
+					Case MENULINUXENABLED
+						UncheckMenu linuxenable
+					Case MENUMACOSXENABLED
+						UncheckMenu macosxenable
+					Case MENUIOSENABLED
+						UncheckMenu iosenable
+					Case MENURASPBERRYPIENABLED
+						UncheckMenu raspberrypienable
+					Case MENUANDROIDENABLED
+						UncheckMenu androidenable
+					Case MENUEMSCRIPTENENABLED
+						UncheckMenu emscriptenenable
+				End Select
+			End If
+			platformenabled[i] = False
+		Next
+
+		platformenabled[index] = True
+		Select menu
+			Case MENUWIN32ENABLED
+				CheckMenu win32enable
+			Case MENULINUXENABLED
+				CheckMenu linuxenable
+			Case MENUMACOSXENABLED
+				CheckMenu macosxenable
+			Case MENUIOSENABLED
+				CheckMenu iosenable
+			Case MENURASPBERRYPIENABLED
+				CheckMenu raspberrypienable
+			Case MENUANDROIDENABLED
+				CheckMenu androidenable
+			Case MENUEMSCRIPTENENABLED
+				CheckMenu emscriptenenable
+		End Select
+		
+		UpdateArchitectureMenuState menu
+		
+		If platformChanged Then
+			DefaultArchitectureMenuForPlatform(menu)
+		End If
+	End Method
+	
+	Method UpdateArchitectureMenus(menu:Int)
+		Local index:Int = menu - ARCHITECTUREOFFSET
+
+		For Local i:Int = 0 Until architectureenabled.Length
+			If architectureenabled[i] And i <> index Then
+				Select ARCHITECTUREOFFSET + i
+					Case MENUX86ENABLED
+						UncheckMenu x86enable
+					Case MENUX64ENABLED
+						UncheckMenu x64enable
+					Case MENUPPCENABLED
+						UncheckMenu ppcenable
+					Case MENUARMENABLED
+						UncheckMenu armenable
+					Case MENUARMEABIV5ENABLED
+						UncheckMenu armeabiv5enable
+					Case MENUARMEABIV7AENABLED
+						UncheckMenu armeabiv7aenable
+					Case MENUARM64V8AENABLED
+						UncheckMenu arm64v8aenable
+					Case MENUJSENABLED
+						UncheckMenu jsenable
+					Case MENUARMV7ENABLED
+						UncheckMenu armv7enable
+					Case MENUARM64ENABLED
+						UncheckMenu arm64enable
+				End Select
+			End If
+			architectureenabled[i] = False
+		Next
+		
+		architectureenabled[index] = True
+		Select menu
+			Case MENUX86ENABLED
+				CheckMenu x86enable
+			Case MENUX64ENABLED
+				CheckMenu x64enable
+			Case MENUPPCENABLED
+				CheckMenu ppcenable
+			Case MENUARMENABLED
+				CheckMenu armenable
+			Case MENUARMEABIV5ENABLED
+				CheckMenu armeabiv5enable
+			Case MENUARMEABIV7AENABLED
+				CheckMenu armeabiv7aenable
+			Case MENUARM64V8AENABLED
+				CheckMenu arm64v8aenable
+			Case MENUJSENABLED
+				CheckMenu jsenable
+			Case MENUARMV7ENABLED
+				CheckMenu armv7enable
+			Case MENUARM64ENABLED
+				CheckMenu arm64enable
+		End Select
+	End Method
+	
+	Method UpdateArchitectureMenuState(platformMenu:Int)
+		DisableMenu x86enable
+		DisableMenu x64enable
+		DisableMenu ppcenable
+		DisableMenu armenable
+		DisableMenu armeabiv5enable
+		DisableMenu armeabiv7aenable
+		DisableMenu arm64v8aenable
+		DisableMenu jsenable
+		DisableMenu armv7enable
+		DisableMenu arm64enable
+
+		Select platformMenu
+			Case MENUWIN32ENABLED, MENULINUXENABLED
+				EnableMenu x86enable
+				EnableMenu x64enable
+			Case MENUMACOSXENABLED
+?Not ppc
+				EnableMenu x86enable
+				EnableMenu x64enable
+?ppc
+				EnableMenu ppcenable
+?
+			Case MENUIOSENABLED
+				EnableMenu x86enable
+				EnableMenu x64enable
+				EnableMenu armv7enable
+				EnableMenu arm64enable
+			Case MENURASPBERRYPIENABLED
+				EnableMenu armenable
+			Case MENUANDROIDENABLED
+				EnableMenu x86enable
+				EnableMenu x64enable
+				EnableMenu armeabiv5enable
+				EnableMenu armeabiv7aenable
+				EnableMenu arm64v8aenable
+			Case MENUEMSCRIPTENENABLED
+				EnableMenu jsenable
+		End Select
+	End Method
+
+	Method DefaultArchitectureMenuForPlatform(platformMenu:Int)
+		For Local i:Int = 0 Until architectureenabled.Length
+			If architectureenabled[i] Then
+				Select ARCHITECTUREOFFSET + i
+					Case MENUX86ENABLED
+						UncheckMenu x86enable
+					Case MENUX64ENABLED
+						UncheckMenu x64enable
+					Case MENUPPCENABLED
+						UncheckMenu ppcenable
+					Case MENUARMENABLED
+						UncheckMenu armenable
+					Case MENUARMEABIV5ENABLED
+						UncheckMenu armeabiv5enable
+					Case MENUARMEABIV7AENABLED
+						UncheckMenu armeabiv7aenable
+					Case MENUARM64V8AENABLED
+						UncheckMenu arm64v8aenable
+					Case MENUJSENABLED
+						UncheckMenu jsenable
+					Case MENUARMV7ENABLED
+						UncheckMenu armv7enable
+					Case MENUARM64ENABLED
+						UncheckMenu arm64enable
+				End Select
+			End If
+			architectureenabled[i] = False
+		Next
+
+		Select platformMenu
+			Case MENUWIN32ENABLED, MENULINUXENABLED
+?x86
+				CheckMenu x86enable
+				architectureenabled[MENUX86ENABLED - ARCHITECTUREOFFSET] = True
+?x64
+				CheckMenu x64enable
+				architectureenabled[MENUX64ENABLED - ARCHITECTUREOFFSET] = True
+?
+			Case MENUMACOSXENABLED
+?x86
+				CheckMenu x86enable
+				architectureenabled[MENUX86ENABLED - ARCHITECTUREOFFSET] = True
+?x64
+				CheckMenu x64enable
+				architectureenabled[MENUX64ENABLED - ARCHITECTUREOFFSET] = True
+?ppc
+				CheckMenu ppcenable
+				architectureenabled[MENUPPCENABLED - ARCHITECTUREOFFSET] = True
+?
+			Case MENUIOSENABLED
+?x86
+				CheckMenu x86enable
+				architectureenabled[MENUX86ENABLED - ARCHITECTUREOFFSET] = True
+?x64
+				CheckMenu x64enable
+				architectureenabled[MENUX64ENABLED - ARCHITECTUREOFFSET] = True
+?
+			Case MENURASPBERRYPIENABLED
+				CheckMenu armenable
+				architectureenabled[MENUARMENABLED - ARCHITECTUREOFFSET] = True
+			Case MENUANDROIDENABLED
+				CheckMenu armeabiv5enable
+				architectureenabled[MENUARMEABIV5ENABLED - ARCHITECTUREOFFSET] = True
+			Case MENUEMSCRIPTENENABLED
+				CheckMenu jsenable
+				architectureenabled[MENUJSENABLED - ARCHITECTUREOFFSET] = True
+		End Select
+	End Method
+	
+	Method GetPlatform:String()
+		For Local i:Int = 0 Until platformenabled.Length
+			If platformenabled[i] Then
+				Select PLATFORMOFFSET + i
+					Case MENUWIN32ENABLED
+						Return "win32"
+					Case MENULINUXENABLED
+						Return "linux"
+					Case MENUMACOSXENABLED
+						Return "macos"
+					Case MENUIOSENABLED
+						Return "ios"
+					Case MENURASPBERRYPIENABLED
+						Return "raspberrypi"
+					Case MENUANDROIDENABLED
+						Return "android"
+					Case MENUEMSCRIPTENENABLED
+						Return "emscripten"
+				End Select
+			End If
+		Next
+		
+		Return Null
+	End Method
+	
+	Method GetArchitecture:String()
+		For Local i:Int = 0 Until architectureenabled.Length
+			If architectureenabled[i] Then
+				Select ARCHITECTUREOFFSET + i
+					Case MENUX86ENABLED
+						Return "x86"
+					Case MENUX64ENABLED
+						Return "x64"
+					Case MENUPPCENABLED
+						Return "ppc"
+					Case MENUARMENABLED
+						Return "arm"
+					Case MENUARMEABIV5ENABLED
+						Return "armeabi"
+					Case MENUARMEABIV7AENABLED
+						Return "armeabiv7a"
+					Case MENUARM64V8AENABLED
+						Return "arm64v8a"
+					Case MENUJSENABLED
+						Return "js"
+					Case MENUARMV7ENABLED
+						Return "armv7"
+					Case MENUARM64ENABLED
+						Return "arm64"
+				End Select
+			End If
+		Next
+		
+		Return Null
+	End Method
+
 	Method poll()
 		
 		Local	src:TGadget
